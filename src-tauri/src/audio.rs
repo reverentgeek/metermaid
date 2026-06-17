@@ -448,26 +448,45 @@ fn build_stream(
             None,
         ),
         cpal::SampleFormat::I16 => {
-            let mut scratch: Vec<f32> = Vec::new();
+            // Pre-sized to the ring capacity so the realtime callback converts
+            // in place and never reallocates (one callback can't exceed a full
+            // ring's worth of samples).
+            let mut scratch = vec![0.0f32; cap];
             device.build_input_stream(
                 &config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    scratch.clear();
-                    scratch.extend(data.iter().map(|&s| s as f32 / 32768.0));
-                    let _ = producer.push_slice(&scratch);
+                    let n = data.len().min(scratch.len());
+                    for (dst, &s) in scratch[..n].iter_mut().zip(data) {
+                        *dst = s as f32 / 32768.0;
+                    }
+                    let pushed = producer.push_slice(&scratch[..n]);
+                    if pushed < data.len() {
+                        eprintln!(
+                            "audio ring overrun: dropped {} samples",
+                            data.len() - pushed
+                        );
+                    }
                 },
                 stream_error,
                 None,
             )
         }
         cpal::SampleFormat::U16 => {
-            let mut scratch: Vec<f32> = Vec::new();
+            let mut scratch = vec![0.0f32; cap];
             device.build_input_stream(
                 &config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                    scratch.clear();
-                    scratch.extend(data.iter().map(|&s| (s as f32 - 32768.0) / 32768.0));
-                    let _ = producer.push_slice(&scratch);
+                    let n = data.len().min(scratch.len());
+                    for (dst, &s) in scratch[..n].iter_mut().zip(data) {
+                        *dst = (s as f32 - 32768.0) / 32768.0;
+                    }
+                    let pushed = producer.push_slice(&scratch[..n]);
+                    if pushed < data.len() {
+                        eprintln!(
+                            "audio ring overrun: dropped {} samples",
+                            data.len() - pushed
+                        );
+                    }
                 },
                 stream_error,
                 None,
