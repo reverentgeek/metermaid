@@ -28,6 +28,19 @@ The app meters any **input device** the OS exposes. To meter a hardware unit's U
 arrives at the computer as an input. To meter software/playback, route it through a virtual
 device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole) and select that.
 
+## Settings
+
+MeterMaid remembers your setup between launches: the window size, position, and
+monitor, plus the selected device, channels, sample rate, target LUFS, and clip
+ceiling. Restored selections are re-validated against the hardware actually
+present — if the saved device is gone it falls back to the system default with a
+notice, and invalid channels or sample rates fall back gracefully. If the monitor
+the window was last on has been disconnected, the window is recentered on an
+available display rather than restored off-screen.
+
+Enable **Auto-start** to begin capturing on launch whenever a valid saved device
+and channels are restored.
+
 ## Develop
 
 ```sh

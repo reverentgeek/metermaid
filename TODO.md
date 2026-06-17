@@ -8,19 +8,19 @@ Future tasks and ideas for the MeterMaid app. Roughly ordered by value.
 
 Remember and restore app state on launch so the user doesn't reconfigure every time.
 
-- [ ] Persist **window size, position, and monitor** across launches.
+- [x] Persist **window size, position, and monitor** across launches.
   - On startup, if the previously used monitor is **no longer present** (e.g. an
     external display was unplugged), move the window to the next available monitor
     instead of restoring it off-screen.
   - Also clamp the restored position so the window is always at least partially
     on-screen (guards against resolution changes / display rearrangement).
-- [ ] Persist **selected audio device** and re-select it on launch.
+- [x] Persist **selected audio device** and re-select it on launch.
   - If that device is gone, fall back to the system default and surface a notice.
-- [ ] Persist **selected channels** (e.g. `Ch 1–2`) and **sample rate**.
+- [x] Persist **selected channels** (e.g. `Ch 1–2`) and **sample rate**.
   - Re-validate against the restored device's capabilities; fall back gracefully
     if the channel index / rate is no longer valid.
-- [ ] Persist **target LUFS** and **clip ceiling (dBTP)** values.
-- [ ] (Optional) Auto-start capture on launch if a valid device + channels restore.
+- [x] Persist **target LUFS** and **clip ceiling (dBTP)** values.
+- [x] (Optional) Auto-start capture on launch if a valid device + channels restore.
 - [x] Add more frequency labels below the spectral graph so that users have a better idea of which ones are spiking
 
 Implementation notes:

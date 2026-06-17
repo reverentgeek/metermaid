@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { load, type Store } from "@tauri-apps/plugin-store";
 
 interface DeviceInfo {
   name: string;
@@ -63,8 +64,44 @@ const ceilingInput = $<HTMLInputElement>("ceiling");
 const deltaEl = $<HTMLDivElement>("delta");
 const tpCard = $<HTMLDivElement>("tpCard");
 const clipFlag = $<HTMLSpanElement>("clipFlag");
+const autostartInput = $<HTMLInputElement>("autostart");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
+
+// ---- Persisted settings (tauri-plugin-store) -----------------------------
+// Device/channel/rate/target/ceiling/auto-start survive across launches. We
+// keep a single JSON store and write the full control state on any change.
+let store: Store | null = null;
+// Suppresses persistence while we apply restored values to the controls, so
+// the act of restoring doesn't immediately rewrite the store.
+let restoring = true;
+// Saved selections waiting to be reapplied as the device list / config load.
+// Each is consumed once and cleared so later user edits use plain defaults.
+let pendingDevice: string | undefined;
+let pendingChannels: string | undefined;
+let pendingRate: number | undefined;
+// Whether the saved device is actually present this launch (gates auto-start).
+let savedDeviceAvailable = true;
+
+const numOrNull = (s: string) => {
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+};
+
+async function persist() {
+  if (!store || restoring) return;
+  try {
+    await store.set("device", deviceSelect.value || "");
+    await store.set("channels", channelSelect.value);
+    await store.set("sampleRate", rateSelect.value ? Number(rateSelect.value) : null);
+    await store.set("target", numOrNull(targetInput.value));
+    await store.set("ceiling", numOrNull(ceilingInput.value));
+    await store.set("autoStart", autostartInput.checked);
+    await store.save();
+  } catch {
+    // Persistence is best-effort; never block metering on a failed write.
+  }
+}
 
 function fmt(v: number, floor = LOUDNESS_FLOOR): string {
   if (!Number.isFinite(v) || v <= floor) return "−∞";
@@ -99,6 +136,21 @@ async function loadDevices() {
       opt.textContent = d.isDefault ? `${d.name} (default)` : d.name;
       if (d.isDefault) opt.selected = true;
       deviceSelect.append(opt);
+    }
+    // Restore the saved device if it's still present; otherwise leave the
+    // system default selected and surface a notice. When the saved device is
+    // gone we also drop the saved channels/rate so the default device gets its
+    // own sensible defaults rather than a mismatched selection.
+    if (pendingDevice) {
+      if (devices.some((d) => d.name === pendingDevice)) {
+        deviceSelect.value = pendingDevice;
+      } else {
+        savedDeviceAvailable = false;
+        pendingChannels = undefined;
+        pendingRate = undefined;
+        setStatus("saved device unavailable — using default", "err");
+      }
+      pendingDevice = undefined;
     }
     await refreshDeviceConfig();
   } catch (e) {
@@ -143,6 +195,22 @@ async function refreshDeviceConfig() {
     });
     populateChannels(cfg.channels);
     populateRates(cfg.sampleRates, cfg.defaultSampleRate);
+
+    // Reapply saved channel/rate selections, but only if they're still valid
+    // for this device — otherwise the defaults chosen above stand. Consumed
+    // once: subsequent device switches fall through to plain defaults.
+    if (pendingChannels !== undefined) {
+      if (Array.from(channelSelect.options).some((o) => o.value === pendingChannels)) {
+        channelSelect.value = pendingChannels;
+      }
+      pendingChannels = undefined;
+    }
+    if (pendingRate !== undefined) {
+      if (cfg.sampleRates.includes(pendingRate)) {
+        rateSelect.value = String(pendingRate);
+      }
+      pendingRate = undefined;
+    }
   } catch (e) {
     setStatus(String(e), "err");
   }
@@ -405,17 +473,60 @@ window.addEventListener("DOMContentLoaded", async () => {
   resizeCanvas();
   window.addEventListener("resize", resizeCanvas);
 
+  // Load persisted settings before touching the controls. Target/ceiling apply
+  // immediately; device/channels/rate are staged as "pending" and reapplied as
+  // the device list and per-device config load (with validation) below.
+  try {
+    store = await load("settings.json");
+    const dev = (await store.get<string>("device")) ?? "";
+    const ch = await store.get<string>("channels");
+    const sr = await store.get<number>("sampleRate");
+    const tgt = await store.get<number>("target");
+    const ceil = await store.get<number>("ceiling");
+    const auto = await store.get<boolean>("autoStart");
+    if (dev) pendingDevice = dev;
+    if (typeof ch === "string") pendingChannels = ch;
+    if (typeof sr === "number") pendingRate = sr;
+    if (typeof tgt === "number") targetInput.value = String(tgt);
+    if (typeof ceil === "number") ceilingInput.value = String(ceil);
+    autostartInput.checked = auto === true;
+  } catch {
+    // No store yet (first launch) or a read error — fall back to UI defaults.
+  }
+
   await loadDevices();
 
-  deviceSelect.addEventListener("change", refreshDeviceConfig);
+  // Restore is complete; allow control changes to persist from here on.
+  restoring = false;
+
+  deviceSelect.addEventListener("change", async () => {
+    await refreshDeviceConfig();
+    void persist();
+  });
   toggleBtn.addEventListener("click", () => (running ? stop() : start()));
   resetBtn.addEventListener("click", resetMeasurement);
+  channelSelect.addEventListener("change", () => void persist());
+  rateSelect.addEventListener("change", () => void persist());
+  autostartInput.addEventListener("change", () => void persist());
   targetInput.addEventListener("input", () => {
     if (latest) updateReadouts(latest);
   });
+  targetInput.addEventListener("change", () => void persist());
   ceilingInput.addEventListener("input", () => {
     if (latest) updateReadouts(latest);
   });
+  ceilingInput.addEventListener("change", () => void persist());
+
+  // Optional: auto-start capture when a valid saved device + channels restored.
+  if (
+    autostartInput.checked &&
+    savedDeviceAvailable &&
+    !deviceSelect.disabled &&
+    deviceSelect.value &&
+    channelSelect.value
+  ) {
+    await start();
+  }
 
   await listen<Metrics>("meter-update", (event) => {
     latest = event.payload;

@@ -142,6 +142,21 @@ body {
   opacity: 0.6;
 }
 
+.config-row .check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.config-row .check input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 /* ---- Readouts ---- */
 .readouts {
   display: grid;

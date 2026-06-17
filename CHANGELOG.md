@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Persist configuration between sessions: window size/position/monitor (via
+  `tauri-plugin-window-state`), plus the selected audio device, channels, sample
+  rate, target LUFS, and clip ceiling (via `tauri-plugin-store`). Restored
+  selections are re-validated against the current device — a missing device
+  falls back to the system default with a notice, and out-of-range channels or
+  sample rates fall back gracefully.
+- If the monitor the window was last shown on is gone at launch (e.g. an external
+  display was unplugged), the window is recentered on an available monitor instead
+  of restoring off-screen.
+- Optional **Auto-start** toggle that begins capture on launch when a valid saved
+  device and channels are restored.
 - Surface OS audio stream faults (e.g. the device being unplugged mid-capture)
   in the UI instead of silently freezing the meter.
 
