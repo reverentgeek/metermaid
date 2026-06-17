@@ -10,7 +10,7 @@
 //! and emits metrics to the UI.
 
 use std::collections::{BTreeSet, VecDeque};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -495,6 +495,17 @@ fn build_stream(
 /// `Analyzer`, services commands, and on a fixed cadence drains the ring and
 /// emits `meter-update` events while capturing.
 pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
+    // Emit on a dedicated thread so a slow/blocking UI emit can never stall the
+    // realtime drain. If the UI falls behind, frames are dropped (coalesced to
+    // the latest) rather than backing up the audio ring — the loudness analyzer
+    // still receives every sample.
+    let (emit_tx, emit_rx) = mpsc::sync_channel::<Metrics>(1);
+    std::thread::spawn(move || {
+        while let Ok(metrics) = emit_rx.recv() {
+            let _ = app.emit("meter-update", metrics);
+        }
+    });
+
     // The cpal stream is held only to keep capture alive (dropping it stops the
     // device); it is paired with its consumer so both are torn down together.
     let mut active: Option<(cpal::Stream, ringbuf::HeapCons<f32>)> = None;
@@ -549,7 +560,8 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
                         }
                         analyzer.process(&drain[..got]);
                     }
-                    let _ = app.emit("meter-update", analyzer.metrics());
+                    // Non-blocking: drop this frame if the UI emit is behind.
+                    let _ = emit_tx.try_send(analyzer.metrics());
                 }
             }
             Err(RecvTimeoutError::Disconnected) => break,
