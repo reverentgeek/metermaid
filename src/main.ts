@@ -34,12 +34,20 @@ const LOUDNESS_FLOOR = -70;
 const PEAK_FLOOR = -120;
 const SPECTRUM_FLOOR = -90;
 const SPECTRUM_TOP = 0;
-const PEAK_RELEASE_DB = 2; // live true-peak meter fall per update
+// Ballistics expressed as dB/second so they fall at the same real-world rate
+// regardless of display refresh rate or the engine's emit cadence.
+const PEAK_RELEASE_DB_PER_SEC = 60; // live true-peak meter fall
+const SPECTRUM_PEAK_DECAY_DB_PER_SEC = 36; // spectrum peak-hold fall
+// Clamp the per-tick delta so a backgrounded tab (large gap between ticks)
+// doesn't make the meters jump on the first frame back.
+const MAX_TICK_SEC = 0.1;
 
 let running = false;
 let latest: Metrics | null = null;
 let peaks: number[] = []; // smoothed spectrum peak-hold per band
 let displayedPeak = PEAK_FLOOR; // live true-peak with release ballistics
+let lastPeakTs = 0; // timestamp of the last true-peak ballistics update (ms)
+let lastFrameTs = 0; // timestamp of the last spectrum frame (ms)
 let clipLatched = false;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -154,6 +162,7 @@ async function start() {
     running = true;
     clipLatched = false;
     displayedPeak = PEAK_FLOOR;
+    lastPeakTs = 0;
     toggleBtn.textContent = "Stop";
     toggleBtn.classList.add("running");
     configControlsEnabled(false);
@@ -164,18 +173,33 @@ async function start() {
   }
 }
 
+// Return the UI to its idle/stopped state. Shared by an explicit Stop and by
+// involuntary teardown when the capture device faults.
+function teardownRunningUi() {
+  running = false;
+  latest = null;
+  toggleBtn.textContent = "Start";
+  toggleBtn.classList.remove("running");
+  configControlsEnabled(true);
+}
+
 async function stop() {
   try {
     await invoke("stop_capture");
   } catch (e) {
     setStatus(String(e), "err");
   }
-  running = false;
-  latest = null;
-  toggleBtn.textContent = "Start";
-  toggleBtn.classList.remove("running");
-  configControlsEnabled(true);
+  teardownRunningUi();
   setStatus("stopped", "idle");
+}
+
+// The audio engine emits this when the OS reports a fault on the active stream
+// (e.g. the device is unplugged mid-capture). Tear down and surface why.
+function handleStreamError(message: string) {
+  if (!running) return;
+  void invoke("stop_capture").catch(() => {});
+  teardownRunningUi();
+  setStatus(`device error: ${message}`, "err");
 }
 
 function updateReadouts(m: Metrics) {
@@ -185,8 +209,14 @@ function updateReadouts(m: Metrics) {
   $("lra").textContent = m.lra > 0 ? m.lra.toFixed(1) : "0.0";
 
   // Live true peak with release ballistics; held max from the engine.
+  const now = performance.now();
+  const dt = lastPeakTs ? Math.min((now - lastPeakTs) / 1000, MAX_TICK_SEC) : 0;
+  lastPeakTs = now;
   const live = m.truePeakDb;
-  displayedPeak = live > displayedPeak ? live : Math.max(live, displayedPeak - PEAK_RELEASE_DB);
+  displayedPeak =
+    live > displayedPeak
+      ? live
+      : Math.max(live, displayedPeak - PEAK_RELEASE_DB_PER_SEC * dt);
   $("truePeak").textContent = fmt(displayedPeak, PEAK_FLOOR);
   $("truePeakMax").textContent = fmt(m.truePeakMaxDb, PEAK_FLOOR);
 
@@ -226,7 +256,7 @@ function hzToX(hz: number, w: number, nyquist: number): number {
   return t * w;
 }
 
-function drawSpectrum() {
+function drawSpectrum(dt: number) {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
   ctx.clearRect(0, 0, w, h);
@@ -286,7 +316,7 @@ function drawSpectrum() {
     ctx.fillRect(i * barW, y, barW - 1, h - y);
 
     if (db > peaks[i]) peaks[i] = db;
-    else peaks[i] = Math.max(SPECTRUM_FLOOR, peaks[i] - 0.6);
+    else peaks[i] = Math.max(SPECTRUM_FLOOR, peaks[i] - SPECTRUM_PEAK_DECAY_DB_PER_SEC * dt);
   }
 
   ctx.fillStyle = "rgba(255,255,255,0.75)";
@@ -296,14 +326,17 @@ function drawSpectrum() {
   }
 }
 
-function frame() {
-  drawSpectrum();
+function frame(now: number) {
+  const dt = lastFrameTs ? Math.min((now - lastFrameTs) / 1000, MAX_TICK_SEC) : 0;
+  lastFrameTs = now;
+  drawSpectrum(dt);
   requestAnimationFrame(frame);
 }
 
 function resetMeasurement() {
   peaks = [];
   displayedPeak = PEAK_FLOOR;
+  lastPeakTs = 0;
   clipLatched = false;
   tpCard.classList.remove("clipping");
   clipFlag.classList.remove("on");
@@ -329,6 +362,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   await listen<Metrics>("meter-update", (event) => {
     latest = event.payload;
     updateReadouts(latest);
+  });
+
+  await listen<string>("stream-error", (event) => {
+    handleStreamError(event.payload);
   });
 
   requestAnimationFrame(frame);

@@ -3,6 +3,8 @@
 Thanks for your interest in improving MeterMaid! This is a small Tauri app (Rust audio
 engine + TypeScript/Vite UI), so the contribution loop is short.
 
+By participating, you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Prerequisites
 
 - [Rust](https://www.rust-lang.org/tools/install) (stable) with `rustfmt` and `clippy`

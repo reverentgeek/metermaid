@@ -5,6 +5,8 @@ A cross-platform desktop **LUFS / loudness meter** built with [Tauri](https://ta
 standard and shows a real-time frequency spectrum — handy for normalizing the levels of
 guitar amp/effects patches (e.g. Line 6 Helix) or any audio source.
 
+![MeterMaid metering a stereo input: loudness readouts, true-peak, target/apply helper, and a log-frequency spectrum analyzer](docs/screenshot.png)
+
 ## Readouts
 
 - **Integrated** loudness (gated), LUFS — the overall "how loud is this patch" number

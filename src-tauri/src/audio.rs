@@ -10,6 +10,7 @@
 //! and emits metrics to the UI.
 
 use std::collections::{BTreeSet, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::Arc;
 use std::time::Duration;
@@ -319,10 +320,20 @@ fn lin_to_db(lin: f64) -> f64 {
     }
 }
 
-/// Validate that the requested source channels exist on the device.
+/// Validate that the requested source channels exist on the device and form a
+/// valid 1- or 2-channel selection (mono or a stereo pair).
 fn validate_selection(sel: &[usize], device_channels: usize) -> Result<(), String> {
     if sel.is_empty() {
         return Err("no channels selected".into());
+    }
+    if sel.len() > 2 {
+        return Err(format!(
+            "too many channels selected ({}); meter 1 (mono) or 2 (stereo)",
+            sel.len()
+        ));
+    }
+    if sel.len() == 2 && sel[0] == sel[1] {
+        return Err("the two selected channels must be different".into());
     }
     if let Some(&mx) = sel.iter().max() {
         if mx >= device_channels {
@@ -390,15 +401,14 @@ pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
     })
 }
 
-fn stream_error(err: cpal::StreamError) {
-    eprintln!("audio stream error: {err}");
-}
-
 /// A built-but-not-yet-playing capture stream plus everything the engine thread
 /// needs to drain and analyze it.
 struct BuiltStream {
     stream: cpal::Stream,
     consumer: ringbuf::HeapCons<f32>,
+    /// Samples dropped on ring overrun, tallied lock-free by the realtime
+    /// callback and logged off the realtime thread by the engine.
+    dropped: Arc<AtomicU64>,
     info: StreamInfo,
     sample_rate: u32,
     sel: Vec<usize>,
@@ -406,6 +416,7 @@ struct BuiltStream {
 }
 
 fn build_stream(
+    app: &AppHandle,
     device_name: Option<String>,
     sample_rate: Option<u32>,
     sel: Vec<u32>,
@@ -432,19 +443,30 @@ fn build_stream(
     let cap = (rate.max(48_000) as usize) * device_channels as usize;
     let (mut producer, consumer) = HeapRb::<f32>::new(cap).split();
 
+    // Dropped-sample tally. The realtime callback only does a relaxed atomic
+    // add (no lock, no allocation); the engine thread logs and clears it.
+    let dropped = Arc::new(AtomicU64::new(0));
+
+    // cpal invokes this on its own thread when the device faults (e.g. it is
+    // unplugged mid-capture). Forward it to the UI so the user sees a reason
+    // rather than a silently frozen meter.
+    let err_app = app.clone();
+    let on_error = move |err: cpal::StreamError| {
+        eprintln!("audio stream error: {err}");
+        let _ = err_app.emit("stream-error", err.to_string());
+    };
+
+    let cb_dropped = Arc::clone(&dropped);
     let stream = match sample_format {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 let pushed = producer.push_slice(data);
                 if pushed < data.len() {
-                    eprintln!(
-                        "audio ring overrun: dropped {} samples",
-                        data.len() - pushed
-                    );
+                    cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
                 }
             },
-            stream_error,
+            on_error,
             None,
         ),
         cpal::SampleFormat::I16 => {
@@ -461,13 +483,10 @@ fn build_stream(
                     }
                     let pushed = producer.push_slice(&scratch[..n]);
                     if pushed < data.len() {
-                        eprintln!(
-                            "audio ring overrun: dropped {} samples",
-                            data.len() - pushed
-                        );
+                        cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
                     }
                 },
-                stream_error,
+                on_error,
                 None,
             )
         }
@@ -482,13 +501,10 @@ fn build_stream(
                     }
                     let pushed = producer.push_slice(&scratch[..n]);
                     if pushed < data.len() {
-                        eprintln!(
-                            "audio ring overrun: dropped {} samples",
-                            data.len() - pushed
-                        );
+                        cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
                     }
                 },
-                stream_error,
+                on_error,
                 None,
             )
         }
@@ -499,6 +515,7 @@ fn build_stream(
     Ok(BuiltStream {
         stream,
         consumer,
+        dropped,
         info: StreamInfo {
             device_name: dev_name,
             sample_rate: rate,
@@ -519,15 +536,17 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
     // the latest) rather than backing up the audio ring — the loudness analyzer
     // still receives every sample.
     let (emit_tx, emit_rx) = mpsc::sync_channel::<Metrics>(1);
+    let emit_app = app.clone();
     std::thread::spawn(move || {
         while let Ok(metrics) = emit_rx.recv() {
-            let _ = app.emit("meter-update", metrics);
+            let _ = emit_app.emit("meter-update", metrics);
         }
     });
 
     // The cpal stream is held only to keep capture alive (dropping it stops the
-    // device); it is paired with its consumer so both are torn down together.
-    let mut active: Option<(cpal::Stream, ringbuf::HeapCons<f32>)> = None;
+    // device); it is paired with its consumer and dropped-sample counter so all
+    // three are torn down together.
+    let mut active: Option<ActiveStream> = None;
     let mut analyzer = Analyzer::new();
     let mut drain = vec![0.0f32; DRAIN_CHUNK];
 
@@ -540,7 +559,7 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
                 reply,
             }) => {
                 active = None; // stop any existing stream first
-                match build_stream(device, sample_rate, channels) {
+                match build_stream(&app, device, sample_rate, channels) {
                     Ok(built) => {
                         if let Err(e) =
                             analyzer.configure(built.sample_rate, built.sel, built.device_channels)
@@ -550,7 +569,11 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
                         }
                         match built.stream.play() {
                             Ok(()) => {
-                                active = Some((built.stream, built.consumer));
+                                active = Some(ActiveStream {
+                                    stream: built.stream,
+                                    consumer: built.consumer,
+                                    dropped: built.dropped,
+                                });
                                 let _ = reply.send(Ok(built.info));
                             }
                             Err(e) => {
@@ -571,13 +594,19 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
             }
             Ok(Command::Reset) => analyzer.reset(),
             Err(RecvTimeoutError::Timeout) => {
-                if let Some((_stream, cons)) = active.as_mut() {
+                if let Some(active) = active.as_mut() {
                     loop {
-                        let got = cons.pop_slice(&mut drain);
+                        let got = active.consumer.pop_slice(&mut drain);
                         if got == 0 {
                             break;
                         }
                         analyzer.process(&drain[..got]);
+                    }
+                    // Report any ring overruns the realtime callback tallied,
+                    // off the realtime thread.
+                    let dropped = active.dropped.swap(0, Ordering::Relaxed);
+                    if dropped > 0 {
+                        eprintln!("audio ring overrun: dropped {dropped} samples");
                     }
                     // Non-blocking: drop this frame if the UI emit is behind.
                     let _ = emit_tx.try_send(analyzer.metrics());
@@ -586,6 +615,16 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
+}
+
+/// An active capture: the cpal stream (kept alive to keep the device running),
+/// its SPSC consumer, and the lock-free dropped-sample counter.
+struct ActiveStream {
+    /// Held only for its `Drop`: dropping the stream stops the device.
+    #[allow(dead_code)]
+    stream: cpal::Stream,
+    consumer: ringbuf::HeapCons<f32>,
+    dropped: Arc<AtomicU64>,
 }
 
 #[cfg(test)]
@@ -643,6 +682,18 @@ mod tests {
         assert!(err.contains("out of range"), "got: {err}");
         assert!(err.contains("channel 3"), "1-based label, got: {err}");
         assert!(validate_selection(&[0, 1], 2).is_ok());
+    }
+
+    #[test]
+    fn validate_selection_rejects_too_many_and_duplicates() {
+        // More than a stereo pair is not a valid selection.
+        assert!(validate_selection(&[0, 1, 2], 4)
+            .unwrap_err()
+            .contains("too many"));
+        // A "stereo" pair pointing at the same channel is rejected.
+        assert!(validate_selection(&[1, 1], 2)
+            .unwrap_err()
+            .contains("different"));
     }
 
     #[test]
