@@ -246,8 +246,40 @@ function resizeCanvas() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-// Reference grid lines at musically useful frequencies.
-const GRID_HZ = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
+// Reference grid lines at musically useful frequencies. `major` ticks get a
+// brighter line plus a text label; the rest are faint, unlabeled minor ticks
+// that help pinpoint which frequency is spiking without cluttering the axis.
+const GRID_HZ: { hz: number; major: boolean }[] = [
+  { hz: 20, major: true },
+  { hz: 30, major: false },
+  { hz: 40, major: false },
+  { hz: 50, major: true },
+  { hz: 60, major: false },
+  { hz: 80, major: false },
+  { hz: 100, major: true },
+  { hz: 150, major: false },
+  { hz: 200, major: true },
+  { hz: 300, major: false },
+  { hz: 400, major: false },
+  { hz: 500, major: true },
+  { hz: 700, major: false },
+  { hz: 1000, major: true },
+  { hz: 1500, major: false },
+  { hz: 2000, major: true },
+  { hz: 3000, major: false },
+  { hz: 4000, major: false },
+  { hz: 5000, major: true },
+  { hz: 7000, major: false },
+  { hz: 10000, major: true },
+  { hz: 15000, major: true },
+  { hz: 20000, major: true },
+];
+
+function fmtHz(hz: number): string {
+  if (hz < 1000) return `${hz}`;
+  const k = hz / 1000;
+  return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
+}
 
 function hzToX(hz: number, w: number, nyquist: number): number {
   const fLo = 20;
@@ -255,6 +287,13 @@ function hzToX(hz: number, w: number, nyquist: number): number {
   const t = Math.log(hz / fLo) / Math.log(fHi / fLo);
   return t * w;
 }
+
+// Gutters reserved outside the plot area so axis labels stay legible — the
+// bars never draw over them. Left holds the dB scale, bottom the frequencies.
+const PLOT_PAD_LEFT = 28;
+const PLOT_PAD_BOTTOM = 14;
+const PLOT_PAD_TOP = 4;
+const PLOT_PAD_RIGHT = 14;
 
 function drawSpectrum(dt: number) {
   const w = canvas.clientWidth;
@@ -264,33 +303,55 @@ function drawSpectrum(dt: number) {
   ctx.fillStyle = "#0c0e13";
   ctx.fillRect(0, 0, w, h);
 
-  const nyquist = latest ? latest.sampleRate / 2 : 24000;
+  // Inner plot rectangle; everything data-driven is drawn inside this.
+  const pl = PLOT_PAD_LEFT;
+  const pt = PLOT_PAD_TOP;
+  const pw = Math.max(1, w - PLOT_PAD_LEFT - PLOT_PAD_RIGHT);
+  const ph = Math.max(1, h - PLOT_PAD_TOP - PLOT_PAD_BOTTOM);
+  const pb = pt + ph; // plot bottom
 
-  // dB grid lines
-  ctx.strokeStyle = "rgba(255,255,255,0.05)";
-  ctx.fillStyle = "rgba(255,255,255,0.28)";
+  const nyquist = latest ? latest.sampleRate / 2 : 24000;
+  const toY = (db: number) =>
+    pt + ((SPECTRUM_TOP - db) / (SPECTRUM_TOP - SPECTRUM_FLOOR)) * ph;
+
   ctx.font = "10px ui-monospace, monospace";
   ctx.lineWidth = 1;
+
+  // dB grid lines + labels in the left gutter
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "right";
   for (let db = SPECTRUM_TOP; db >= SPECTRUM_FLOOR; db -= 20) {
-    const y = ((SPECTRUM_TOP - db) / (SPECTRUM_TOP - SPECTRUM_FLOOR)) * h;
+    const y = toY(db);
     ctx.beginPath();
-    ctx.moveTo(0, y + 0.5);
-    ctx.lineTo(w, y + 0.5);
+    ctx.moveTo(pl, y + 0.5);
+    ctx.lineTo(pl + pw, y + 0.5);
     ctx.stroke();
-    ctx.fillText(`${db}`, 4, y + 11);
+    ctx.fillStyle = "rgba(255,255,255,0.32)";
+    ctx.fillText(`${db}`, pl - 4, y);
   }
 
-  // frequency grid lines
-  for (const hz of GRID_HZ) {
+  // frequency grid lines + labels in the bottom gutter
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "center";
+  let lastLabelX = -Infinity;
+  for (const { hz, major } of GRID_HZ) {
     if (hz >= nyquist) continue;
-    const x = hzToX(hz, w, nyquist);
+    const x = pl + hzToX(hz, pw, nyquist);
+    ctx.strokeStyle = major ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.04)";
     ctx.beginPath();
-    ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, h);
+    ctx.moveTo(x + 0.5, pt);
+    ctx.lineTo(x + 0.5, pb);
     ctx.stroke();
-    const label = hz >= 1000 ? `${hz / 1000}k` : `${hz}`;
-    ctx.fillText(label, x + 3, h - 4);
+    // Only label major ticks, and skip any that would crowd the previous label
+    // (the log scale compresses the high end where labels would otherwise overlap).
+    if (major && x - lastLabelX >= 24) {
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.fillText(fmtHz(hz), x, h - 3);
+      lastLabelX = x;
+    }
   }
+  ctx.textAlign = "left";
 
   const spec = latest?.spectrum;
   if (!spec || spec.length === 0) return;
@@ -298,12 +359,9 @@ function drawSpectrum(dt: number) {
   const n = spec.length;
   if (peaks.length !== n) peaks = new Array(n).fill(SPECTRUM_FLOOR);
 
-  const toY = (db: number) =>
-    ((SPECTRUM_TOP - db) / (SPECTRUM_TOP - SPECTRUM_FLOOR)) * h;
+  const barW = pw / n;
 
-  const barW = w / n;
-
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  const grad = ctx.createLinearGradient(0, pt, 0, pb);
   grad.addColorStop(0, "#ff5d5d");
   grad.addColorStop(0.35, "#ffd24a");
   grad.addColorStop(0.7, "#54e08a");
@@ -313,7 +371,7 @@ function drawSpectrum(dt: number) {
   for (let i = 0; i < n; i++) {
     const db = Math.max(SPECTRUM_FLOOR, Math.min(SPECTRUM_TOP, spec[i]));
     const y = toY(db);
-    ctx.fillRect(i * barW, y, barW - 1, h - y);
+    ctx.fillRect(pl + i * barW, y, barW - 1, pb - y);
 
     if (db > peaks[i]) peaks[i] = db;
     else peaks[i] = Math.max(SPECTRUM_FLOOR, peaks[i] - SPECTRUM_PEAK_DECAY_DB_PER_SEC * dt);
@@ -322,7 +380,7 @@ function drawSpectrum(dt: number) {
   ctx.fillStyle = "rgba(255,255,255,0.75)";
   for (let i = 0; i < n; i++) {
     const y = toY(peaks[i]);
-    ctx.fillRect(i * barW, y - 1, barW - 1, 2);
+    ctx.fillRect(pl + i * barW, y - 1, barW - 1, 2);
   }
 }
 

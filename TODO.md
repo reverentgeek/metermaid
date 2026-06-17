@@ -21,7 +21,7 @@ Remember and restore app state on launch so the user doesn't reconfigure every t
     if the channel index / rate is no longer valid.
 - [ ] Persist **target LUFS** and **clip ceiling (dBTP)** values.
 - [ ] (Optional) Auto-start capture on launch if a valid device + channels restore.
-- [ ] Add more frequency labels below the spectral graph so that users have a better idea of which ones are spiking
+- [x] Add more frequency labels below the spectral graph so that users have a better idea of which ones are spiking
 
 Implementation notes:
 
