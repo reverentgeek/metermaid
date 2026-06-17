@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MeterMaid</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <header class="toolbar">
+      <div class="brand">
+        <svg class="brand-logo" viewBox="88 88 336 336" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="brand-meter" gradientUnits="userSpaceOnUse" x1="0" y1="416" x2="0" y2="96">
+              <stop offset="0%" stop-color="#54e08a" />
+              <stop offset="55%" stop-color="#f2c14e" />
+              <stop offset="100%" stop-color="#ff5d5d" />
+            </linearGradient>
+          </defs>
+          <g fill="url(#brand-meter)">
+            <rect x="96"  y="96"  width="32" height="320" rx="12" />
+            <rect x="144" y="166" width="32" height="250" rx="12" />
+            <rect x="192" y="250" width="32" height="166" rx="12" />
+            <rect x="240" y="294" width="32" height="122" rx="12" />
+            <rect x="288" y="250" width="32" height="166" rx="12" />
+            <rect x="336" y="166" width="32" height="250" rx="12" />
+            <rect x="384" y="96"  width="32" height="320" rx="12" />
+          </g>
+        </svg>
+        <span>MeterMaid</span>
+      </div>
+      <select id="device" class="device-select" title="Input device"></select>
+      <button id="toggle" class="btn btn-primary">Start</button>
+      <button id="reset" class="btn" title="Restart integrated + peak measurement">Reset</button>
+      <span id="status" class="status">stopped</span>
+    </header>
+
+    <div class="config-row">
+      <label for="channels">Channels</label>
+      <select id="channels" class="cfg-select" title="Source channels to meter"></select>
+      <label for="rate">Sample rate</label>
+      <select id="rate" class="cfg-select" title="Sample rate"></select>
+    </div>
+
+    <section class="readouts">
+      <div class="readout readout-hero">
+        <div class="label">Integrated</div>
+        <div class="value" id="integrated">—</div>
+        <div class="unit">LUFS</div>
+      </div>
+      <div class="readout">
+        <div class="label">Short-term</div>
+        <div class="value" id="shortTerm">—</div>
+        <div class="unit">LUFS</div>
+      </div>
+      <div class="readout">
+        <div class="label">Momentary</div>
+        <div class="value" id="momentary">—</div>
+        <div class="unit">LUFS</div>
+      </div>
+      <div class="readout">
+        <div class="label">Loudness Range</div>
+        <div class="value" id="lra">—</div>
+        <div class="unit">LU</div>
+      </div>
+      <div class="readout" id="tpCard">
+        <div class="label">True Peak <span class="clip-flag" id="clipFlag">CLIP</span></div>
+        <div class="value" id="truePeak">—</div>
+        <div class="unit">dBTP</div>
+        <div class="subvalue">max <span id="truePeakMax">—</span></div>
+      </div>
+    </section>
+
+    <section class="target-row">
+      <label for="target">Target</label>
+      <input id="target" class="num-input" type="number" value="-14" step="0.5" />
+      <span class="unit-inline">LUFS</span>
+
+      <span class="spacer"></span>
+      <div class="delta" id="delta"><span class="delta-label">apply</span> <strong>—</strong></div>
+      <span class="spacer"></span>
+
+      <label for="ceiling">Ceiling</label>
+      <input id="ceiling" class="num-input" type="number" value="-1" step="0.5" />
+      <span class="unit-inline">dBTP</span>
+    </section>
+
+    <section class="spectrum-wrap">
+      <canvas id="spectrum"></canvas>
+    </section>
+  </body>
+</html>

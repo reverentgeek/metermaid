@@ -1,0 +1,47 @@
+# Contributing to MeterMaid
+
+Thanks for your interest in improving MeterMaid! This is a small Tauri app (Rust audio
+engine + TypeScript/Vite UI), so the contribution loop is short.
+
+## Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install) (stable) with `rustfmt` and `clippy`
+- [Node.js](https://nodejs.org) and [pnpm](https://pnpm.io)
+- The [Tauri system dependencies](https://tauri.app/start/prerequisites/) for your OS
+
+## Setup
+
+```sh
+pnpm install
+pnpm tauri dev
+```
+
+## Before opening a pull request
+
+Please make sure all of the following pass locally — CI runs the same checks:
+
+```sh
+# Frontend
+pnpm build
+
+# Rust (run from src-tauri/)
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
+
+- Run `cargo fmt` to fix formatting.
+- New audio/analysis behavior should come with tests. See the golden-signal suite in
+  `src-tauri/src/audio.rs` (`#[cfg(test)] mod tests`) for the pattern — you can drive the
+  `Analyzer` directly with synthesized frames, no audio device required. If you have
+  `ffmpeg` installed, the ignored cross-check is handy:
+  `cargo test ebur128_matches_ffmpeg -- --ignored --nocapture`.
+
+## Guidelines
+
+- Keep the realtime audio callback allocation- and lock-free (it only writes into the
+  SPSC ring; all analysis happens on the engine thread). See `audio.rs` for the rationale.
+- Match the existing code style and keep changes focused.
+- For larger changes, open an issue first to discuss the approach.
+
+By contributing you agree that your contributions are licensed under the [MIT License](LICENSE).

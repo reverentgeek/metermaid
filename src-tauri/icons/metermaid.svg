@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Peak-meter gradient: green at the floor rising to red at the top -->
+    <linearGradient id="mm-meter" gradientUnits="userSpaceOnUse" x1="0" y1="416" x2="0" y2="96">
+      <stop offset="0%" stop-color="#54e08a" />
+      <stop offset="55%" stop-color="#f2c14e" />
+      <stop offset="100%" stop-color="#ff5d5d" />
+    </linearGradient>
+    <linearGradient id="mm-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141821" />
+      <stop offset="100%" stop-color="#0a0c10" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded app-icon background -->
+  <rect width="512" height="512" rx="104" fill="url(#mm-bg)" />
+
+  <!-- Audio meter bars whose tops trace the letter "M" -->
+  <g fill="url(#mm-meter)">
+    <rect x="96"  y="96"  width="32" height="320" rx="12" />
+    <rect x="144" y="166" width="32" height="250" rx="12" />
+    <rect x="192" y="250" width="32" height="166" rx="12" />
+    <rect x="240" y="294" width="32" height="122" rx="12" />
+    <rect x="288" y="250" width="32" height="166" rx="12" />
+    <rect x="336" y="166" width="32" height="250" rx="12" />
+    <rect x="384" y="96"  width="32" height="320" rx="12" />
+  </g>
+</svg>
