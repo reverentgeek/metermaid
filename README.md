@@ -77,6 +77,45 @@ With those set, `tauri build` signs the app, submits it to Apple's notary servic
 staples the ticket. See the Tauri macOS signing docs for the hardened-runtime entitlements
 (this app needs `com.apple.security.device.audio-input`).
 
+## Building releases
+
+Distributable installers for all platforms are built in CI by
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which runs a matrix
+across **macOS, Windows, and Linux** for both **x64 and arm64** using
+[`tauri-action`](https://github.com/tauri-apps/tauri-action). Each job emits every
+bundle type for its OS:
+
+| Platform | Arches | Installers |
+| --- | --- | --- |
+| macOS | x64, arm64 | `.dmg`, `.app` |
+| Windows | x64, arm64 | `.msi`, `.exe` |
+| Linux | x64, arm64 | `.deb`, `.rpm`, `.AppImage` |
+
+To cut a release, push a version tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow builds every target and uploads the artifacts to a **draft** GitHub
+Release named after the tag. Review the draft and publish it manually once all jobs
+have finished. (You can also trigger a build from the **Actions** tab via
+*workflow_dispatch* to smoke-test without tagging.)
+
+### Signing secrets
+
+Builds run **unsigned** by default — usable for testing, but they trip Gatekeeper
+(macOS) and SmartScreen (Windows) on other machines. To produce signed builds, add
+these repository secrets (Settings → Secrets and variables → Actions); the workflow
+wires them in automatically when present:
+
+- **macOS** — `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+  `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`
+- **Windows** — `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD`
+- **Updater (optional)** — `TAURI_SIGNING_PRIVATE_KEY`,
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
 ## Platform support
 
 MeterMaid is built on Tauri 2 and is developed primarily on **macOS**. Windows and Linux

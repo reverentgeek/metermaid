@@ -1,0 +1,132 @@
+name: Release
+
+# Builds distributable installers for macOS, Windows, and Linux (x64 + arm64)
+# and uploads them to a draft GitHub Release.
+#
+# Trigger by pushing a version tag:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Or run manually from the Actions tab (workflow_dispatch).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS — Apple Silicon runner builds both arches natively.
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+
+          # Linux — native runners per arch (avoids painful webkitgtk cross-compile).
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: ""
+          - platform: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            args: ""
+
+          # Windows — x64 native; arm64 cross-compiled on the x64 runner.
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ""
+          - platform: windows-latest
+            target: aarch64-pc-windows-msvc
+            args: --target aarch64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libasound2-dev
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # --- macOS signing & notarization (placeholders) ---
+          # Provide these repository secrets to produce signed, notarized macOS builds.
+          # Without them the build still succeeds but produces an unsigned app
+          # that triggers Gatekeeper warnings on other machines.
+          #
+          # APPLE_CERTIFICATE          - base64-encoded .p12 Developer ID Application cert
+          # APPLE_CERTIFICATE_PASSWORD - password for the .p12
+          # APPLE_SIGNING_IDENTITY     - e.g. "Developer ID Application: Your Name (TEAMID)"
+          # APPLE_ID                   - Apple ID email used for notarization
+          # APPLE_PASSWORD             - app-specific password for that Apple ID
+          # APPLE_TEAM_ID              - 10-character Apple Developer Team ID
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+          # --- Windows signing (placeholders) ---
+          # Tauri reads these from tauri.conf.json's bundle.windows.signCommand or
+          # via environment for cert-based signing. For Azure Trusted Signing or a
+          # local .pfx, wire the appropriate secrets here. Left blank = unsigned
+          # build (triggers SmartScreen warnings).
+          #
+          # WINDOWS_CERTIFICATE          - base64-encoded .pfx code-signing cert
+          # WINDOWS_CERTIFICATE_PASSWORD - password for the .pfx
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+          # --- Tauri updater signing (placeholder, optional) ---
+          # Only needed if you enable the updater plugin and ship update artifacts.
+          # TAURI_SIGNING_PRIVATE_KEY          - private key from `tauri signer generate`
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD - password for that key
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          # Creates/updates a draft release named after the tag. Review and
+          # publish it manually once all matrix jobs have uploaded their assets.
+          tagName: ${{ github.ref_name }}
+          releaseName: "MeterMaid ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
