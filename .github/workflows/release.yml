@@ -48,8 +48,15 @@ jobs:
             args: --target aarch64-pc-windows-msvc
 
     runs-on: ${{ matrix.platform }}
+
+    # Secrets can't be referenced directly in step `if:` conditions, so expose a
+    # boolean flag here and gate the signing steps on it. Signing stays fully off
+    # until the corresponding secrets are added (builds are produced unsigned).
+    env:
+      APPLE_SIGNING_ENABLED: ${{ secrets.APPLE_CERTIFICATE != '' }}
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Tauri system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -63,9 +70,9 @@ jobs:
             libgtk-3-dev \
             libasound2-dev
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -82,46 +89,46 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # Only export the Apple signing/notarization env when the certificate secret
+      # is present. Passing these as empty strings makes the Tauri bundler attempt
+      # `security import` on an empty cert and fail, so they must be absent (not
+      # empty) for unsigned builds.
+      #
+      # To enable signed, notarized macOS builds, add these repository secrets
+      # (Settings -> Secrets and variables -> Actions):
+      #   APPLE_CERTIFICATE          - base64-encoded .p12 Developer ID Application cert
+      #   APPLE_CERTIFICATE_PASSWORD - password for the .p12
+      #   APPLE_SIGNING_IDENTITY     - e.g. "Developer ID Application: Your Name (TEAMID)"
+      #   APPLE_ID                   - Apple ID email used for notarization
+      #   APPLE_PASSWORD             - app-specific password for that Apple ID
+      #   APPLE_TEAM_ID              - 10-character Apple Developer Team ID
+      - name: Configure Apple signing & notarization
+        if: ${{ runner.os == 'macOS' && env.APPLE_SIGNING_ENABLED == 'true' }}
+        run: |
+          {
+            echo "APPLE_CERTIFICATE<<__EOF__"
+            echo "${{ secrets.APPLE_CERTIFICATE }}"
+            echo "__EOF__"
+            echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
+            echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
+            echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+            echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
+            echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+          } >> "$GITHUB_ENV"
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-          # --- macOS signing & notarization (placeholders) ---
-          # Provide these repository secrets to produce signed, notarized macOS builds.
-          # Without them the build still succeeds but produces an unsigned app
-          # that triggers Gatekeeper warnings on other machines.
+          # Apple signing vars (when enabled) are injected via $GITHUB_ENV above.
           #
-          # APPLE_CERTIFICATE          - base64-encoded .p12 Developer ID Application cert
-          # APPLE_CERTIFICATE_PASSWORD - password for the .p12
-          # APPLE_SIGNING_IDENTITY     - e.g. "Developer ID Application: Your Name (TEAMID)"
-          # APPLE_ID                   - Apple ID email used for notarization
-          # APPLE_PASSWORD             - app-specific password for that Apple ID
-          # APPLE_TEAM_ID              - 10-character Apple Developer Team ID
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-          # --- Windows signing (placeholders) ---
-          # Tauri reads these from tauri.conf.json's bundle.windows.signCommand or
-          # via environment for cert-based signing. For Azure Trusted Signing or a
-          # local .pfx, wire the appropriate secrets here. Left blank = unsigned
-          # build (triggers SmartScreen warnings).
+          # Windows signing is configured through tauri.conf.json's
+          # bundle.windows.signCommand (e.g. Azure Trusted Signing or a local
+          # .pfx). Add it there plus any required secrets when you enable it.
           #
-          # WINDOWS_CERTIFICATE          - base64-encoded .pfx code-signing cert
-          # WINDOWS_CERTIFICATE_PASSWORD - password for the .pfx
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-
-          # --- Tauri updater signing (placeholder, optional) ---
-          # Only needed if you enable the updater plugin and ship update artifacts.
-          # TAURI_SIGNING_PRIVATE_KEY          - private key from `tauri signer generate`
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD - password for that key
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Updater signing (optional, only if the updater plugin is enabled):
+          #   TAURI_SIGNING_PRIVATE_KEY          - key from `tauri signer generate`
+          #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD - password for that key
         with:
           # Creates/updates a draft release named after the tag. Review and
           # publish it manually once all matrix jobs have uploaded their assets.
