@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-18
+
 ### Added
+- Initial release: ITU-R BS.1770 / EBU R128 loudness metering (integrated,
+  short-term, momentary, LRA), true-peak with peak-hold, a log-frequency
+  spectrum analyzer, and a target/apply gain helper.
 - Persist configuration between sessions: window size/position/monitor (via
   `tauri-plugin-window-state`), plus the selected audio device, channels, sample
   rate, target LUFS, and clip ceiling (via `tauri-plugin-store`). Restored
@@ -35,9 +40,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Reject invalid channel selections (more than two channels, or a stereo pair
   pointing at the same channel) in the audio engine.
-
-## [0.1.0]
-
-- Initial release: ITU-R BS.1770 / EBU R128 loudness metering (integrated,
-  short-term, momentary, LRA), true-peak with peak-hold, a log-frequency
-  spectrum analyzer, and a target/apply gain helper.
