@@ -7,6 +7,25 @@ guitar amp/effects patches (e.g. Line 6 Helix) or any audio source.
 
 ![MeterMaid metering a stereo input: loudness readouts, true-peak, target/apply helper, and a log-frequency spectrum analyzer](docs/screenshot.png)
 
+## Download
+
+Grab the installer for your platform below, or see [all releases](https://github.com/reverentgeek/metermaid/releases/latest)
+for every format and the latest version.
+
+| Platform | Installer | Other formats |
+| --- | --- | --- |
+| **macOS** (Apple Silicon) | [`.dmg`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_aarch64.dmg) | — |
+| **macOS** (Intel) | [`.dmg`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_x64.dmg) | — |
+| **Windows** (x64) | [`.exe` installer](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_x64-setup.exe) | [`.msi`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_x64_en-US.msi) |
+| **Windows** (ARM64) | [`.exe` installer](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_arm64-setup.exe) | [`.msi`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_arm64_en-US.msi) |
+| **Linux** (x64) | [`.AppImage`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_amd64.AppImage) | [`.deb`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_amd64.deb) · [`.rpm`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid-0.1.0-1.x86_64.rpm) |
+| **Linux** (ARM64) | [`.AppImage`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_aarch64.AppImage) | [`.deb`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_arm64.deb) · [`.rpm`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid-0.1.0-1.aarch64.rpm) |
+
+macOS builds are signed with an Apple Developer ID and **notarized** by Apple, so they
+open without Gatekeeper warnings. Windows builds are currently **unsigned** — SmartScreen
+may warn on first run (choose *More info → Run anyway*). On first launch MeterMaid asks for
+**microphone access**, which it needs to read any audio input device.
+
 ## Readouts
 
 - **Integrated** loudness (gated), LUFS — the overall "how loud is this patch" number
@@ -74,8 +93,15 @@ pnpm tauri build
 ```
 
 With those set, `tauri build` signs the app, submits it to Apple's notary service, and
-staples the ticket. See the Tauri macOS signing docs for the hardened-runtime entitlements
-(this app needs `com.apple.security.device.audio-input`).
+staples the ticket. Notarization enforces the hardened runtime, under which microphone
+access requires the `com.apple.security.device.audio-input` entitlement — declared in
+[`src-tauri/Entitlements.plist`](src-tauri/Entitlements.plist) and wired in via
+`bundle.macOS.entitlements`. Without it a signed build launches but is silently denied
+audio input.
+
+Release builds produced by [`.github/workflows/release.yml`](.github/workflows/release.yml)
+sign and notarize automatically when the matching `APPLE_*` repository secrets are present
+(see [Building releases](#building-releases)).
 
 ## Building releases
 
