@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Required for microphone/input-device access under the hardened runtime,
+	  which notarization enforces. Without this, signed+notarized builds are
+	  denied audio input even though Info.plist declares NSMicrophoneUsageDescription
+	  (the usage string alone is not sufficient under the hardened runtime).
+	-->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>
