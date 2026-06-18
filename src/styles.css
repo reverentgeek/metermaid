@@ -55,14 +55,35 @@ body {
   display: block;
 }
 
+/* Force custom styling on native selects. Without appearance:none, GTK/Linux
+   renders native chrome that ignores the dark background, leaving near-white
+   text on a light widget (unreadable). The custom caret replaces the native
+   one that appearance:none removes; option colors fix the dropdown popup. */
+.device-select,
+.cfg-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238b93a7' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+.device-select option,
+.cfg-select option {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
 .device-select {
   flex: 1;
   min-width: 0;
-  background: var(--panel-2);
+  background-color: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 7px 10px;
+  padding: 7px 28px 7px 10px;
   font-size: 13px;
 }
 
@@ -130,11 +151,11 @@ body {
 }
 
 .cfg-select {
-  background: var(--panel-2);
+  background-color: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 6px 28px 6px 10px;
   font-size: 13px;
 }
 
