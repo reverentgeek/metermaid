@@ -7,6 +7,11 @@ guitar amp/effects patches (e.g. Line 6 Helix) or any audio source.
 
 ![MeterMaid metering a stereo input: loudness readouts, true-peak, target/apply helper, and a log-frequency spectrum analyzer](docs/screenshot.png)
 
+> **Why level patches?** A louder patch almost always *sounds* better even when it isn't, so
+> honest tone comparisons need matched loudness. The companion blog post —
+> [**Level Guitar Patches with MeterMaid**](https://reverentgeek.com/leveling-guitar-patches-with-tauri/)
+> — explains the problem and walks through a full leveling session with the app.
+
 ## Download
 
 Grab the installer for your platform below, or see [all releases](https://github.com/reverentgeek/metermaid/releases/latest)
