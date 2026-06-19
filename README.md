@@ -40,6 +40,25 @@ implementation of BS.1770, the same algorithm behind ffmpeg's `ebur128` filter).
 captured with [`cpal`](https://crates.io/crates/cpal) and the spectrum uses
 [`rustfft`](https://crates.io/crates/rustfft).
 
+## Using the meter
+
+**Integrated** loudness — and therefore the **Apply** value — is a *long-term average of the
+entire take* since you started (or last reset) the measurement, per the EBU R128 standard.
+That's intentional: it describes the overall loudness of a whole performance rather than the
+moment-to-moment level.
+
+Because it averages everything heard so far, **Apply won't jump when you change your volume**
+mid-measurement — the earlier (louder or quieter) signal is still part of the average. The
+live **Short-term** and **Momentary** readouts react instantly, but Integrated and Apply
+deliberately lag.
+
+So to dial in a level:
+
+1. Make your change (e.g. adjust the patch or guitar volume).
+2. Click **Reset** — not Stop/Start. Reset restarts the integrated measurement while keeping
+   the audio device running.
+3. Play for a few representative seconds, and **Apply** will settle on the new suggested gain.
+
 ## Audio source
 
 The app meters any **input device** the OS exposes. To meter a hardware unit's USB output
