@@ -722,17 +722,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 	});
 	ceilingInput.addEventListener("change", () => void persist());
 
-	// Optional: auto-start capture when a valid saved device + channels restored.
-	if (
-		autostartInput.checked &&
-		savedDeviceAvailable &&
-		!deviceSelect.disabled &&
-		deviceSelect.value &&
-		channelSelect.value
-	) {
-		await start();
-	}
-
 	await listen<Metrics>("meter-update", (event) => {
 		latest = event.payload;
 		updateReadouts(latest);
@@ -744,6 +733,20 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 	// Watch for input devices being plugged in or removed while idle.
 	window.setInterval(() => void pollDevices(), DEVICE_POLL_MS);
+
+	// Optional: auto-start capture when a valid saved device + channels restored.
+	// Done after the meter-update/stream-error listeners are registered so an
+	// immediate stream fault on start is surfaced rather than missed — otherwise
+	// the UI could sit with controls disabled and no visible failure.
+	if (
+		autostartInput.checked &&
+		savedDeviceAvailable &&
+		!deviceSelect.disabled &&
+		deviceSelect.value &&
+		channelSelect.value
+	) {
+		await start();
+	}
 
 	// Wait for the bundled fonts before the first draw so the canvas spectrum
 	// labels render in JetBrains Mono rather than briefly flashing a fallback.

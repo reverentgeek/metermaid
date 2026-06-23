@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The input-device list now updates automatically while the app is idle: plug in or remove a USB/audio device and it appears in (or disappears from) the picker within a couple of seconds, without reopening the dropdown. The current selection is preserved, and if the selected device is unplugged the picker falls back to the system default with a notice that clears once a device is reselected or reconnected.
 
+### Fixed
+
+- The sample-rate picker no longer offers rates that the device only supports under a different channel count or sample format than the one capture actually uses. Such rates would appear selectable and then fail on Start; the picker is now filtered to the configuration the capture stream is built with.
+- Auto-start now begins capture only after the meter and stream-error listeners are registered, so an immediate stream fault on launch is surfaced instead of leaving the UI with controls disabled and no visible error.
+
 ## [0.1.1] - 2026-06-22
 
 ### Changed
