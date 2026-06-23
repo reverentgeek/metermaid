@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: lint staged Rust, TypeScript, and Markdown.
+#
+# Enabled automatically by the `prepare` npm script, which runs on
+# `pnpm install` and sets `git config core.hooksPath .githooks`.
+#
+# Bypass in an emergency with: git commit --no-verify
+# Skip only the (slower) Rust clippy pass with: SKIP_CLIPPY=1 git commit
+set -uo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)" || exit 1
+cd "$repo_root" || exit 1
+bin="$repo_root/node_modules/.bin"
+
+# Collect staged (added/copied/modified) files by language. Read line by line so
+# paths with spaces survive; avoids bash-4-only features for macOS bash 3.2.
+rs=()
+ts=()
+md=()
+while IFS= read -r f; do
+  case "$f" in
+    *.rs) rs+=("$f") ;;
+    *.ts) ts+=("$f") ;;
+    *.md) md+=("$f") ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+status=0
+
+# --- Markdown -------------------------------------------------------------
+if [ "${#md[@]}" -gt 0 ]; then
+  echo "• markdownlint (${#md[@]} file(s))"
+  if [ -x "$bin/markdownlint-cli2" ]; then
+    "$bin/markdownlint-cli2" "${md[@]}" || status=1
+  else
+    echo "  ! markdownlint-cli2 not found — run 'pnpm install'"
+    status=1
+  fi
+fi
+
+# --- TypeScript -----------------------------------------------------------
+if [ "${#ts[@]}" -gt 0 ]; then
+  echo "• biome (${#ts[@]} file(s))"
+  if [ -x "$bin/biome" ]; then
+    "$bin/biome" check "${ts[@]}" || status=1
+  else
+    echo "  ! biome not found — run 'pnpm install'"
+    status=1
+  fi
+fi
+
+# --- Rust -----------------------------------------------------------------
+if [ "${#rs[@]}" -gt 0 ]; then
+  echo "• rustfmt"
+  (cd src-tauri && cargo fmt --check) || status=1
+  if [ -z "${SKIP_CLIPPY:-}" ]; then
+    echo "• clippy"
+    (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings) || status=1
+  fi
+fi
+
+if [ "$status" -ne 0 ]; then
+  echo
+  echo "✗ pre-commit checks failed. Fix the issues above, then re-stage."
+  echo "  TypeScript: pnpm format    Rust: (cd src-tauri && cargo fmt)"
+  echo "  Bypass (not recommended):  git commit --no-verify"
+fi
+exit "$status"

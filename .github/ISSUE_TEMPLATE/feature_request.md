@@ -5,14 +5,18 @@ title: "[feature] "
 labels: enhancement
 ---
 
-**What problem would this solve?**
+## What problem would this solve?
+
 Describe the use case or pain point. (e.g. "When normalizing Helix patches I need …")
 
-**Proposed solution**
+## Proposed solution
+
 What you'd like MeterMaid to do.
 
-**Alternatives considered**
+## Alternatives considered
+
 Any workarounds or other approaches.
 
-**Additional context**
+## Additional context
+
 Anything else — references to standards (BS.1770 / R128), screenshots, etc.

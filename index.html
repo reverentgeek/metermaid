@@ -32,8 +32,9 @@
         <span>MeterMaid</span>
       </div>
       <select id="device" class="device-select" title="Input device"></select>
-      <button id="toggle" class="btn btn-primary">Start</button>
-      <button id="reset" class="btn" title="Restart integrated + peak measurement">Reset</button>
+      <button id="start" class="btn btn-primary">Start</button>
+      <button id="reset" class="btn btn-reset" hidden title="Restart the integrated measurement — click after changing a patch">↻ Reset</button>
+      <button id="stop" class="btn" hidden title="Stop capturing">Stop</button>
       <span id="status" class="status">stopped</span>
     </header>
 
@@ -47,6 +48,12 @@
         <input id="autostart" type="checkbox" />
         Auto-start
       </label>
+    </div>
+
+    <div id="resetHint" class="hint" hidden>
+      <span class="hint-icon" aria-hidden="true">↻</span>
+      <span class="hint-text">Changed your patch? Click <strong>Reset</strong>, then play a few seconds — <strong>Apply</strong> will settle on the new level.</span>
+      <button id="hintDismiss" class="hint-dismiss" type="button" title="Got it" aria-label="Dismiss hint">Got it</button>
     </div>
 
     <div id="errorBanner" class="error-banner" hidden>
@@ -90,7 +97,13 @@
 
     <section class="target-row">
       <label for="target">Target</label>
-      <input id="target" class="num-input" type="number" value="-14" step="0.5" />
+      <div class="num-field">
+        <input id="target" class="num-input" type="number" value="-20" step="0.5" />
+        <span class="num-steppers">
+          <button type="button" class="num-step" data-for="target" data-dir="up" tabindex="-1" aria-label="Increase target"></button>
+          <button type="button" class="num-step" data-for="target" data-dir="down" tabindex="-1" aria-label="Decrease target"></button>
+        </span>
+      </div>
       <span class="unit-inline">LUFS</span>
 
       <span class="spacer"></span>
@@ -98,7 +111,13 @@
       <span class="spacer"></span>
 
       <label for="ceiling">Ceiling</label>
-      <input id="ceiling" class="num-input" type="number" value="-1" step="0.5" />
+      <div class="num-field">
+        <input id="ceiling" class="num-input" type="number" value="-1" step="0.5" />
+        <span class="num-steppers">
+          <button type="button" class="num-step" data-for="ceiling" data-dir="up" tabindex="-1" aria-label="Increase ceiling"></button>
+          <button type="button" class="num-step" data-for="ceiling" data-dir="down" tabindex="-1" aria-label="Decrease ceiling"></button>
+        </span>
+      </div>
       <span class="unit-inline">dBTP</span>
     </section>
 

@@ -1,6 +1,6 @@
 [package]
 name = "metermaid"
-version = "0.1.0"
+version = "0.1.1"
 description = "MeterMaid — LUFS / loudness meter"
 authors = ["David Neal <david@reverentgeek.com>"]
 edition = "2021"

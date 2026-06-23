@@ -6,8 +6,9 @@
   --text: #e8ecf4;
   --muted: #8b93a7;
   --accent: #54e08a;
+  --accent-amber: #f2c14e;
   --accent-hot: #ff5d5d;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 * {
@@ -112,9 +113,22 @@ body {
   border-color: transparent;
 }
 
-.btn-primary.running {
-  background: var(--accent-hot);
-  color: #2a0606;
+/* In-session primary: Reset is the action users take between patches, so it
+   carries the amber emphasis while capturing. Distinct from green Start and
+   from red, which is reserved for clip/danger. */
+.btn-reset {
+  background: var(--accent-amber);
+  color: #2a1f06;
+  border-color: transparent;
+}
+
+.btn-reset:hover {
+  background: #ffd24a;
+  border-color: transparent;
+}
+
+.btn[hidden] {
+  display: none;
 }
 
 .status {
@@ -130,6 +144,43 @@ body {
 }
 .status-err {
   color: var(--accent-hot);
+}
+
+/* ---- Reset hint ---- */
+/* Shown once, the first time capture starts, to teach the core workflow: Reset
+   between patch changes. Amber-tinted to tie it to the Reset button it points
+   at. Dismissed (and remembered) on "Got it" or the first Reset click. */
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: rgba(242, 193, 78, 0.12);
+  border-bottom: 1px solid var(--accent-amber);
+}
+.hint[hidden] {
+  display: none;
+}
+.hint-icon {
+  color: var(--accent-amber);
+  font-size: 15px;
+}
+.hint-text {
+  flex: 1;
+}
+.hint-dismiss {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hint-dismiss:hover {
+  border-color: var(--muted);
 }
 
 /* ---- Error banner ---- */
@@ -264,7 +315,7 @@ body {
 }
 
 .readout .value {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 30px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -285,7 +336,7 @@ body {
   margin-top: 4px;
   font-size: 11px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 /* True Peak clip indicator */
@@ -331,15 +382,93 @@ body {
   letter-spacing: 0.6px;
 }
 
-.num-input {
-  width: 72px;
+/* Number field: a themed box holding the input plus custom steppers. The native
+   spin buttons are hidden (unreadable on the dark theme and inconsistent across
+   platforms); the steppers below are drawn with CSS so they match everywhere. */
+.num-field {
+  display: inline-flex;
+  align-items: stretch;
+  width: 92px;
   background: var(--panel-2);
-  color: var(--text);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 6px 8px;
-  font-family: ui-monospace, monospace;
+  overflow: hidden;
+}
+
+.num-field:focus-within {
+  border-color: var(--muted);
+}
+
+.num-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  padding: 6px 4px 6px 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 14px;
+  /* Hide the native spinner (Firefox/standards). */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.num-input:focus {
+  outline: none;
+}
+
+/* Hide the native spinner (WebKit/Blink). */
+.num-input::-webkit-outer-spin-button,
+.num-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.num-steppers {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+}
+
+.num-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 18px;
+  padding: 0;
+  border: none;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.num-step + .num-step {
+  border-top: 1px solid var(--line);
+}
+
+.num-step:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.num-step:active {
+  color: var(--accent);
+}
+
+/* Crisp up/down triangles drawn with borders — no font glyph dependency. */
+.num-step::before {
+  content: "";
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+}
+
+.num-step[data-dir="up"]::before {
+  border-bottom: 4px solid currentColor;
+}
+
+.num-step[data-dir="down"]::before {
+  border-top: 4px solid currentColor;
 }
 
 .unit-inline {
@@ -367,7 +496,7 @@ body {
 }
 
 .delta strong {
-  font-family: ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   color: var(--text);
   font-size: 16px;
 }

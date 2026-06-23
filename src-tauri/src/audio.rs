@@ -515,6 +515,22 @@ fn build_stream(
     let dev_name = device
         .name()
         .unwrap_or_else(|_| "the selected device".into());
+
+    // Debug-only: force a representative capture failure so the error UI can be
+    // exercised without unplugging hardware or revoking permissions. Run the dev
+    // app with `METERMAID_SIMULATE_ERROR=1` and press Start. Compiled out of
+    // release builds.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("METERMAID_SIMULATE_ERROR").is_some() {
+        return Err(explain_build_error(
+            &dev_name,
+            cpal::BuildStreamError::BackendSpecific {
+                err: cpal::BackendSpecificError {
+                    description: "simulated failure (METERMAID_SIMULATE_ERROR)".into(),
+                },
+            },
+        ));
+    }
     let default = device
         .default_input_config()
         .map_err(|e| explain_default_config_error(&dev_name, e))?;

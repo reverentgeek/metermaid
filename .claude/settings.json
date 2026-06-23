@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Running markdownlint…",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; case \"$f\" in *.md) ;; *) exit 0 ;; esac; d=\"${CLAUDE_PROJECT_DIR:-.}\"; bin=\"$d/node_modules/.bin/markdownlint-cli2\"; [ -x \"$bin\" ] || exit 0; cd \"$d\" || exit 0; out=$(\"$bin\" \"$f\" 2>&1); code=$?; if [ $code -ne 0 ]; then printf 'markdownlint found issues in %s:\\n%s\\n' \"$f\" \"$out\" >&2; exit 2; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
