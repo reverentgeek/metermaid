@@ -176,24 +176,64 @@ function configControlsEnabled(enabled: boolean) {
 	rateSelect.disabled = !enabled;
 }
 
+// Signature of the most recently rendered device set, so the hotplug poller can
+// skip rebuilding the dropdown when nothing has changed.
+let lastDeviceSig = "";
+
+// Whether the toolbar is currently showing a device-availability notice (e.g.
+// "input device disconnected"). Tracked so we can clear it back to idle once the
+// device returns or the user picks another one.
+let deviceNotice = false;
+
+function noteDeviceIssue(text: string) {
+	deviceNotice = true;
+	setStatus(text, "err");
+}
+
+// Clear a lingering device notice once the situation resolves. Leaves a real
+// error banner (and any active capture status) untouched.
+function clearDeviceNotice() {
+	if (!deviceNotice) return;
+	deviceNotice = false;
+	if (!running && errorBanner.hidden) setStatus("stopped", "idle");
+}
+
+function deviceSig(devices: DeviceInfo[]): string {
+	return devices.map((d) => `${d.isDefault ? "*" : ""}${d.name}`).join("\n");
+}
+
+// (Re)render the device <option>s. If `keep` names a device that's still
+// present it stays selected; otherwise the system default (or first device)
+// is selected. Shared by the initial load and the hotplug poller.
+function renderDeviceOptions(devices: DeviceInfo[], keep: string) {
+	deviceSelect.innerHTML = "";
+	if (devices.length === 0) {
+		const opt = document.createElement("option");
+		opt.textContent = "No input devices found";
+		opt.disabled = true;
+		deviceSelect.append(opt);
+		return;
+	}
+	for (const d of devices) {
+		const opt = document.createElement("option");
+		opt.value = d.name;
+		opt.textContent = d.isDefault ? `${d.name} (default)` : d.name;
+		deviceSelect.append(opt);
+	}
+	if (keep && devices.some((d) => d.name === keep)) {
+		deviceSelect.value = keep;
+	} else {
+		const def = devices.find((d) => d.isDefault) ?? devices[0];
+		deviceSelect.value = def.name;
+	}
+}
+
 async function loadDevices() {
 	try {
 		const devices = await invoke<DeviceInfo[]>("list_devices");
-		deviceSelect.innerHTML = "";
-		if (devices.length === 0) {
-			const opt = document.createElement("option");
-			opt.textContent = "No input devices found";
-			opt.disabled = true;
-			deviceSelect.append(opt);
-			return;
-		}
-		for (const d of devices) {
-			const opt = document.createElement("option");
-			opt.value = d.name;
-			opt.textContent = d.isDefault ? `${d.name} (default)` : d.name;
-			if (d.isDefault) opt.selected = true;
-			deviceSelect.append(opt);
-		}
+		renderDeviceOptions(devices, "");
+		lastDeviceSig = deviceSig(devices);
+		if (devices.length === 0) return;
 		// Restore the saved device if it's still present; otherwise leave the
 		// system default selected and surface a notice. When the saved device is
 		// gone we also drop the saved channels/rate so the default device gets its
@@ -205,13 +245,49 @@ async function loadDevices() {
 				savedDeviceAvailable = false;
 				pendingChannels = undefined;
 				pendingRate = undefined;
-				setStatus("saved device unavailable — using default", "err");
+				noteDeviceIssue("saved device unavailable — using default");
 			}
 			pendingDevice = undefined;
 		}
 		await refreshDeviceConfig();
 	} catch (e) {
 		reportError("List input devices", e);
+	}
+}
+
+// How often to re-check the input-device list for hotplug changes.
+const DEVICE_POLL_MS = 2000;
+
+// cpal exposes no device-change callback, so we poll for USB/audio devices
+// being plugged in or removed while the app is idle. We re-list on an interval
+// and rebuild the dropdown only when the set actually changes, preserving the
+// current selection. Skipped during capture (the config controls are locked
+// then) and during restore; a device vanishing mid-capture is already handled
+// by the stream-error path.
+async function pollDevices() {
+	if (running || restoring || deviceSelect.disabled) return;
+	let devices: DeviceInfo[];
+	try {
+		devices = await invoke<DeviceInfo[]>("list_devices");
+	} catch {
+		return; // Transient failure — try again on the next tick.
+	}
+	const sig = deviceSig(devices);
+	if (sig === lastDeviceSig) return;
+	lastDeviceSig = sig;
+	const prev = deviceSelect.value;
+	renderDeviceOptions(devices, prev);
+	if (deviceSelect.value !== prev) {
+		// The selection changed: the previously selected device went away (or the
+		// first device just appeared). Resync the channel/rate pickers, and tell
+		// the user when an active choice was dropped.
+		if (prev) noteDeviceIssue("input device disconnected — using default");
+		else clearDeviceNotice();
+		await refreshDeviceConfig();
+	} else {
+		// Selection survived — the device topology changed but our pick is still
+		// here (e.g. it was just reconnected). Retire any stale notice.
+		clearDeviceNotice();
 	}
 }
 
@@ -603,6 +679,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 	deviceSelect.addEventListener("change", async () => {
 		await refreshDeviceConfig();
+		clearDeviceNotice();
 		void persist();
 	});
 	startBtn.addEventListener("click", () => void start());
@@ -664,6 +741,9 @@ window.addEventListener("DOMContentLoaded", async () => {
 	await listen<string>("stream-error", (event) => {
 		handleStreamError(event.payload);
 	});
+
+	// Watch for input devices being plugged in or removed while idle.
+	window.setInterval(() => void pollDevices(), DEVICE_POLL_MS);
 
 	// Wait for the bundled fonts before the first draw so the canvas spectrum
 	// labels render in JetBrains Mono rather than briefly flashing a fallback.

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-23
+
+### Added
+
+- The input-device list now updates automatically while the app is idle: plug in or remove a USB/audio device and it appears in (or disappears from) the picker within a couple of seconds, without reopening the dropdown. The current selection is preserved, and if the selected device is unplugged the picker falls back to the system default with a notice that clears once a device is reselected or reconnected.
+
 ## [0.1.1] - 2026-06-22
 
 ### Changed
