@@ -474,6 +474,14 @@ pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
     rates.insert(default_sample_rate);
     if let Ok(ranges) = device.supported_input_configs() {
         for range in ranges {
+            // Only offer rates from ranges that match the channel count and
+            // sample format `build_stream` will actually use (the device's
+            // default config). A rate valid only for some other format/channel
+            // count would otherwise appear in the picker and then fail Start
+            // with StreamConfigNotSupported.
+            if range.channels() != channels || range.sample_format() != default.sample_format() {
+                continue;
+            }
             let min = range.min_sample_rate().0;
             let max = range.max_sample_rate().0;
             for &cand in CANDIDATE_RATES.iter() {
