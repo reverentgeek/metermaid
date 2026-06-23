@@ -8,16 +8,13 @@ A cross-platform desktop **LUFS / loudness meter** built with [Tauri](https://ta
 
 ## Download
 
-Grab the installer for your platform below, or see [all releases](https://github.com/reverentgeek/metermaid/releases/latest) for every format and the latest version.
+[**Download the latest release →**](https://github.com/reverentgeek/metermaid/releases/latest)
 
-| Platform | Installer | Other formats |
-| --- | --- | --- |
-| **macOS** (Apple Silicon) | [`.dmg`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_aarch64.dmg) | — |
-| **macOS** (Intel) | [`.dmg`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_x64.dmg) | — |
-| **Windows** (x64) | [`.exe` installer](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_x64-setup.exe) | [`.msi`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_x64_en-US.msi) |
-| **Windows** (ARM64) | [`.exe` installer](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_arm64-setup.exe) | [`.msi`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_arm64_en-US.msi) |
-| **Linux** (x64) | [`.AppImage`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_amd64.AppImage) | [`.deb`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_amd64.deb) · [`.rpm`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid-0.1.0-1.x86_64.rpm) |
-| **Linux** (ARM64) | [`.AppImage`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_aarch64.AppImage) | [`.deb`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid_0.1.0_arm64.deb) · [`.rpm`](https://github.com/reverentgeek/metermaid/releases/download/v0.1.0/MeterMaid-0.1.0-1.aarch64.rpm) |
+On the release page, pick the file for your platform:
+
+- **macOS** — `.dmg` (Apple Silicon is `aarch64`, Intel is `x64`)
+- **Windows** — `.exe` installer, or the `.msi` (both `x64` and `arm64` builds)
+- **Linux** — `.AppImage`, or the `.deb` / `.rpm` (both `x64` and `arm64` builds)
 
 macOS builds are signed with an Apple Developer ID and **notarized** by Apple, so they open without Gatekeeper warnings. Windows builds are currently **unsigned**, and SmartScreen may warn on first run (choose *More info → Run anyway*). On first launch, MeterMaid asks for **microphone access**, which it needs to read audio from any input device.
 
