@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The spectrum canvas no longer redraws at the display refresh rate while idle. The render loop now runs only while capturing and otherwise repaints once per state change, eliminating several percent of idle CPU/GPU usage when metering is stopped.
 - The sample-rate picker no longer offers rates that the device only supports under a different channel count or sample format than the one capture actually uses. Such rates would appear selectable and then fail on Start; the picker is now filtered to the configuration the capture stream is built with.
 - Auto-start now begins capture only after the meter and stream-error listeners are registered, so an immediate stream fault on launch is surfaced instead of leaving the UI with controls disabled and no visible error.
 

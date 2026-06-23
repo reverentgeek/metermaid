@@ -377,6 +377,7 @@ async function start() {
 		setStatus(`${info.sampleRate / 1000} kHz · ${mode}`, "ok");
 		hideError();
 		maybeShowResetHint();
+		requestFrame(); // start the render loop (it self-sustains while running)
 	} catch (e) {
 		reportError("Start capture", e);
 	}
@@ -414,6 +415,7 @@ function teardownRunningUi() {
 	// never engaged still gets it next time.
 	resetHint.hidden = true;
 	configControlsEnabled(true);
+	requestFrame(); // one final repaint to clear the bars, then the loop idles
 }
 
 async function stop() {
@@ -478,6 +480,9 @@ function resizeCanvas() {
 	canvas.width = Math.max(1, Math.round(rect.width * dpr));
 	canvas.height = Math.max(1, Math.round(rect.height * dpr));
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	// Repaint at the new size; while idle the loop is stopped, so without this
+	// the canvas would stay blank/stretched until the next capture.
+	requestFrame();
 }
 
 // Reference grid lines at musically useful frequencies. `major` ticks get a
@@ -624,13 +629,33 @@ function drawSpectrum(dt: number) {
 	}
 }
 
+let rafPending = false;
+
+// Schedule a single spectrum repaint, coalescing repeated requests within the
+// same frame. While capturing, `frame` re-schedules itself for smooth
+// animation; when idle it draws once and stops, so the canvas isn't redrawn at
+// the display refresh rate for a static, data-less plot — that idle redraw was
+// burning several percent CPU (and GPU) for nothing while metering was stopped.
+function requestFrame() {
+	if (rafPending) return;
+	rafPending = true;
+	requestAnimationFrame(frame);
+}
+
 function frame(now: number) {
+	rafPending = false;
 	const dt = lastFrameTs
 		? Math.min((now - lastFrameTs) / 1000, MAX_TICK_SEC)
 		: 0;
 	lastFrameTs = now;
 	drawSpectrum(dt);
-	requestAnimationFrame(frame);
+	// Keep animating only while capturing (live bars + peak-hold decay). Idle,
+	// the plot is static, so stop until a state change requests a repaint.
+	if (running) {
+		requestFrame();
+	} else {
+		lastFrameTs = 0; // next repaint starts fresh (dt = 0), no decay jump
+	}
 }
 
 function resetMeasurement() {
@@ -751,5 +776,5 @@ window.addEventListener("DOMContentLoaded", async () => {
 	// Wait for the bundled fonts before the first draw so the canvas spectrum
 	// labels render in JetBrains Mono rather than briefly flashing a fallback.
 	await document.fonts.ready;
-	requestAnimationFrame(frame);
+	requestFrame();
 });
