@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Capture failures now produce plain-language, actionable messages instead of
+  raw backend strings — they name the device, suggest a fix (e.g. reconnect the
+  device or try a different sample rate), and add an OS-specific hint to check
+  microphone permission when a start fails for an opaque reason.
+- Errors are now shown in a dismissible banner with the full, selectable message
+  and a **Copy** button (plus a link to the issue tracker) so they can be read
+  and reported, rather than truncated in the toolbar status.
+
 ## [0.1.0] - 2026-06-18
 
 ### Added

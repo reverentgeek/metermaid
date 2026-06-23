@@ -49,6 +49,16 @@
       </label>
     </div>
 
+    <div id="errorBanner" class="error-banner" hidden>
+      <span class="error-icon" aria-hidden="true">⚠</span>
+      <div class="error-body">
+        <span id="errorMessage" class="error-message" role="alert"></span>
+        <span class="error-report">Still stuck? Report it at github.com/reverentgeek/metermaid/issues</span>
+      </div>
+      <button id="errorCopy" class="btn btn-small" type="button" title="Copy the error details">Copy</button>
+      <button id="errorDismiss" class="error-dismiss" type="button" title="Dismiss" aria-label="Dismiss error">×</button>
+    </div>
+
     <section class="readouts">
       <div class="readout readout-hero">
         <div class="label">Integrated</div>

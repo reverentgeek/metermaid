@@ -65,6 +65,10 @@ const deltaEl = $<HTMLDivElement>("delta");
 const tpCard = $<HTMLDivElement>("tpCard");
 const clipFlag = $<HTMLSpanElement>("clipFlag");
 const autostartInput = $<HTMLInputElement>("autostart");
+const errorBanner = $<HTMLDivElement>("errorBanner");
+const errorMessage = $<HTMLSpanElement>("errorMessage");
+const errorCopy = $<HTMLButtonElement>("errorCopy");
+const errorDismiss = $<HTMLButtonElement>("errorDismiss");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
 
@@ -113,6 +117,41 @@ function setStatus(text: string, kind: "ok" | "err" | "idle") {
   statusEl.className = `status status-${kind}`;
 }
 
+// Tauri command rejections are usually plain strings (our Rust commands return
+// `Result<_, String>`), but normalize anything else so the user never sees an
+// unhelpful "[object Object]".
+function errText(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const msg = (e as { message?: unknown }).message;
+    if (typeof msg === "string") return msg;
+    try {
+      return JSON.stringify(e);
+    } catch {
+      /* fall through to String() */
+    }
+  }
+  return String(e);
+}
+
+function hideError() {
+  errorBanner.hidden = true;
+  errorMessage.textContent = "";
+}
+
+// Surface a failure the user can actually read, copy, and report. `context` is
+// a short label for what was attempted ("Start capture"); the toolbar status
+// stays terse while the banner shows the full, selectable detail. Also logs to
+// the console so it's recoverable from a dev build / webview inspector.
+function reportError(context: string, e: unknown) {
+  const detail = errText(e);
+  console.error(`${context}:`, e);
+  setStatus("error", "err");
+  errorMessage.textContent = `${context}: ${detail}`;
+  errorBanner.hidden = false;
+}
+
 function configControlsEnabled(enabled: boolean) {
   deviceSelect.disabled = !enabled;
   channelSelect.disabled = !enabled;
@@ -154,7 +193,7 @@ async function loadDevices() {
     }
     await refreshDeviceConfig();
   } catch (e) {
-    setStatus(String(e), "err");
+    reportError("List input devices", e);
   }
 }
 
@@ -212,7 +251,7 @@ async function refreshDeviceConfig() {
       pendingRate = undefined;
     }
   } catch (e) {
-    setStatus(String(e), "err");
+    reportError("Read device settings", e);
   }
 }
 
@@ -236,8 +275,9 @@ async function start() {
     configControlsEnabled(false);
     const mode = info.channels === 1 ? "mono" : `${info.channels} ch`;
     setStatus(`${info.sampleRate / 1000} kHz · ${mode}`, "ok");
+    hideError();
   } catch (e) {
-    setStatus(String(e), "err");
+    reportError("Start capture", e);
   }
 }
 
@@ -255,7 +295,7 @@ async function stop() {
   try {
     await invoke("stop_capture");
   } catch (e) {
-    setStatus(String(e), "err");
+    reportError("Stop capture", e);
   }
   teardownRunningUi();
   setStatus("stopped", "idle");
@@ -267,7 +307,7 @@ function handleStreamError(message: string) {
   if (!running) return;
   void invoke("stop_capture").catch(() => {});
   teardownRunningUi();
-  setStatus(`device error: ${message}`, "err");
+  reportError("Audio device", message);
 }
 
 function updateReadouts(m: Metrics) {
@@ -466,7 +506,7 @@ function resetMeasurement() {
   clipLatched = false;
   tpCard.classList.remove("clipping");
   clipFlag.classList.remove("on");
-  invoke("reset_integrated").catch((e) => setStatus(String(e), "err"));
+  invoke("reset_integrated").catch((e) => reportError("Reset measurement", e));
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -505,6 +545,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   toggleBtn.addEventListener("click", () => (running ? stop() : start()));
   resetBtn.addEventListener("click", resetMeasurement);
+  errorDismiss.addEventListener("click", hideError);
+  errorCopy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(errorMessage.textContent ?? "");
+      errorCopy.textContent = "Copied";
+      setTimeout(() => (errorCopy.textContent = "Copy"), 1500);
+    } catch {
+      // Clipboard unavailable — the message is selectable in the banner.
+    }
+  });
   channelSelect.addEventListener("change", () => void persist());
   rateSelect.addEventListener("change", () => void persist());
   autostartInput.addEventListener("change", () => void persist());

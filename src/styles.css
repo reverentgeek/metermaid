@@ -132,6 +132,65 @@ body {
   color: var(--accent-hot);
 }
 
+/* ---- Error banner ---- */
+/* A persistent, readable home for failures (e.g. capture won't start). Unlike
+   the toolbar status, the full message wraps and is selectable so the user can
+   read and copy it for a bug report. */
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 93, 93, 0.1);
+  border-bottom: 1px solid var(--accent-hot);
+}
+.error-banner[hidden] {
+  display: none;
+}
+.error-icon {
+  color: var(--accent-hot);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.error-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.error-message {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  word-break: break-word;
+  /* Override the global `user-select: none` so the message can be copied. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+.error-report {
+  font-size: 11px;
+  color: var(--muted);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.btn-small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.error-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+.error-dismiss:hover {
+  color: var(--text);
+}
+
 /* ---- Config row ---- */
 .config-row {
   display: flex;

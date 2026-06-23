@@ -156,7 +156,10 @@ impl Analyzer {
         device_channels: usize,
     ) -> Result<(), String> {
         let ch = sel.len() as u32;
-        self.ebu = Some(EbuR128::new(ch, sample_rate, Mode::all()).map_err(|e| e.to_string())?);
+        self.ebu = Some(
+            EbuR128::new(ch, sample_rate, Mode::all())
+                .map_err(|e| format!("Couldn’t initialize the loudness analyzer: {e}"))?,
+        );
         self.sample_rate = sample_rate;
         self.channels = ch as u16;
         self.sel = sel;
@@ -347,17 +350,99 @@ fn validate_selection(sel: &[usize], device_channels: usize) -> Result<(), Strin
     Ok(())
 }
 
+/// Platform-specific guidance appended to capture failures that are commonly
+/// caused by the OS withholding microphone access (the usual reason a build or
+/// start fails with an opaque backend error). Kept actionable: it names the
+/// exact place to grant access so the user can fix it without guessing.
+fn mic_permission_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        " If this is the first time starting capture, macOS may be blocking \
+microphone access — open System Settings → Privacy & Security → Microphone, \
+enable MeterMaid, then try again."
+    } else if cfg!(target_os = "windows") {
+        " Windows may be blocking microphone access — open Settings → Privacy & \
+security → Microphone, allow desktop apps to access the microphone, then try \
+again."
+    } else {
+        " Your system may be blocking microphone access, or another application \
+may be using the device exclusively."
+    }
+}
+
+/// Map a cpal `DefaultStreamConfigError` (raised while reading a device's
+/// capabilities) to an actionable message naming the device.
+fn explain_default_config_error(device: &str, err: cpal::DefaultStreamConfigError) -> String {
+    use cpal::DefaultStreamConfigError::*;
+    match err {
+        DeviceNotAvailable => {
+            format!("“{device}” is no longer available. Reconnect it or pick another input device.")
+        }
+        StreamTypeNotSupported => {
+            format!("“{device}” doesn’t expose a capture format MeterMaid can read.")
+        }
+        other => format!(
+            "Couldn’t read the audio settings for “{device}”: {other}.{}",
+            mic_permission_hint()
+        ),
+    }
+}
+
+/// Map a cpal `BuildStreamError` (raised while opening the capture stream) to an
+/// actionable message. Backend-specific failures — where a denied microphone
+/// permission usually lands — carry the permission hint.
+fn explain_build_error(device: &str, err: cpal::BuildStreamError) -> String {
+    use cpal::BuildStreamError::*;
+    match err {
+        DeviceNotAvailable => {
+            format!("“{device}” is no longer available. Reconnect it or pick another input device.")
+        }
+        StreamConfigNotSupported => format!(
+            "“{device}” doesn’t support the selected sample rate or channels. \
+Try a different sample rate."
+        ),
+        InvalidArgument => format!(
+            "MeterMaid requested invalid capture settings for “{device}”. \
+Try a different channel or sample-rate selection."
+        ),
+        other => format!(
+            "Couldn’t open “{device}” for capture: {other}.{}",
+            mic_permission_hint()
+        ),
+    }
+}
+
+/// Map a cpal `PlayStreamError` (raised while starting the built stream) to an
+/// actionable message.
+fn explain_play_error(device: &str, err: cpal::PlayStreamError) -> String {
+    use cpal::PlayStreamError::*;
+    match err {
+        DeviceNotAvailable => {
+            format!("“{device}” is no longer available. Reconnect it or pick another input device.")
+        }
+        other => format!(
+            "Couldn’t start capture on “{device}”: {other}.{}",
+            mic_permission_hint()
+        ),
+    }
+}
+
 fn find_device(name: &Option<String>) -> Result<cpal::Device, String> {
     let host = cpal::default_host();
     match name {
         Some(name) => host
             .input_devices()
-            .map_err(|e| e.to_string())?
+            .map_err(|e| format!("Couldn’t list input devices: {e}"))?
             .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
-            .ok_or_else(|| format!("input device not found: {name}")),
-        None => host
-            .default_input_device()
-            .ok_or_else(|| "no default input device".to_string()),
+            .ok_or_else(|| {
+                format!(
+                    "Input device “{name}” wasn’t found. It may have been disconnected — \
+pick another device from the list."
+                )
+            }),
+        None => host.default_input_device().ok_or_else(|| {
+            "No input device found. Connect a microphone or audio interface and try again."
+                .to_string()
+        }),
     }
 }
 
@@ -376,7 +461,12 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, String> {
 
 pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
     let device = find_device(&name)?;
-    let default = device.default_input_config().map_err(|e| e.to_string())?;
+    let dev_name = device
+        .name()
+        .unwrap_or_else(|_| "the selected device".into());
+    let default = device
+        .default_input_config()
+        .map_err(|e| explain_default_config_error(&dev_name, e))?;
     let channels = default.channels();
     let default_sample_rate = default.sample_rate().0;
 
@@ -422,8 +512,12 @@ fn build_stream(
     sel: Vec<u32>,
 ) -> Result<BuiltStream, String> {
     let device = find_device(&device_name)?;
-    let dev_name = device.name().unwrap_or_else(|_| "unknown".into());
-    let default = device.default_input_config().map_err(|e| e.to_string())?;
+    let dev_name = device
+        .name()
+        .unwrap_or_else(|_| "the selected device".into());
+    let default = device
+        .default_input_config()
+        .map_err(|e| explain_default_config_error(&dev_name, e))?;
     let device_channels = default.channels();
     let sample_format = default.sample_format();
     let rate = sample_rate.unwrap_or_else(|| default.sample_rate().0);
@@ -508,9 +602,13 @@ fn build_stream(
                 None,
             )
         }
-        other => return Err(format!("unsupported sample format: {other:?}")),
+        other => {
+            return Err(format!(
+                "“{dev_name}” uses an audio format MeterMaid can’t read ({other:?})."
+            ))
+        }
     }
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| explain_build_error(&dev_name, e))?;
 
     Ok(BuiltStream {
         stream,
@@ -561,6 +659,7 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
                 active = None; // stop any existing stream first
                 match build_stream(&app, device, sample_rate, channels) {
                     Ok(built) => {
+                        let dev_name = built.info.device_name.clone();
                         if let Err(e) =
                             analyzer.configure(built.sample_rate, built.sel, built.device_channels)
                         {
@@ -578,7 +677,7 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
                             }
                             Err(e) => {
                                 analyzer.shutdown();
-                                let _ = reply.send(Err(e.to_string()));
+                                let _ = reply.send(Err(explain_play_error(&dev_name, e)));
                             }
                         }
                     }
@@ -669,6 +768,46 @@ mod tests {
         assert_eq!(clean(None, LOUDNESS_FLOOR), LOUDNESS_FLOOR);
         // Finite-but-below-floor values are clamped up to the floor.
         assert_eq!(clean(Some(-100.0), LOUDNESS_FLOOR), LOUDNESS_FLOOR);
+    }
+
+    // --- Error messages -----------------------------------------------------
+
+    #[test]
+    fn build_error_messages_name_the_device_and_are_actionable() {
+        // A vanished device tells the user to reconnect or pick another.
+        let msg = explain_build_error("Scarlett 2i2", cpal::BuildStreamError::DeviceNotAvailable);
+        assert!(msg.contains("Scarlett 2i2"), "got: {msg}");
+        assert!(msg.contains("no longer available"), "got: {msg}");
+
+        // An unsupported config points at the sample rate.
+        let msg = explain_build_error(
+            "Built-in Mic",
+            cpal::BuildStreamError::StreamConfigNotSupported,
+        );
+        assert!(msg.contains("sample rate"), "got: {msg}");
+
+        // Backend-specific failures (where denied mic permission lands) carry
+        // the permission hint.
+        let backend = cpal::BuildStreamError::BackendSpecific {
+            err: cpal::BackendSpecificError {
+                description: "kAudioUnitErr_NoConnection".into(),
+            },
+        };
+        let msg = explain_build_error("Built-in Mic", backend);
+        assert!(msg.contains("Built-in Mic"), "got: {msg}");
+        assert!(msg.to_lowercase().contains("microphone"), "got: {msg}");
+    }
+
+    #[test]
+    fn play_error_carries_permission_hint() {
+        let backend = cpal::PlayStreamError::BackendSpecific {
+            err: cpal::BackendSpecificError {
+                description: "denied".into(),
+            },
+        };
+        let msg = explain_play_error("Mic", backend);
+        assert!(msg.contains("Mic"), "got: {msg}");
+        assert!(msg.to_lowercase().contains("microphone"), "got: {msg}");
     }
 
     // --- Channel selection / de-interleave ---------------------------------
