@@ -49,6 +49,8 @@ Rust `Metrics`/`DeviceConfig`/`StreamInfo` use `#[serde(rename_all = "camelCase"
 
 **Settings persistence** uses `@tauri-apps/plugin-store` (`settings.json`): device, channels, sample rate, target LUFS, clip ceiling — all re-validated against present hardware on load (missing device → system default with a notice). Window geometry persists via `tauri-plugin-window-state`; a small `window_guard_plugin` in `lib.rs` recenters the window if its last monitor is gone.
 
+**Self-update** uses `tauri-plugin-updater` (+ `tauri-plugin-process` for the post-install relaunch). Both are registered in `lib.rs::run`; the updater is gated behind `#[cfg(desktop)]` and declared as a non-mobile target dependency in `Cargo.toml`. `main.ts` calls `check()` on launch (silent) and from the **Check for updates** button (`checkForUpdates(manual)` — `manual` controls whether "up to date"/errors surface). A found update raises the green update banner; **Install & Restart** runs `downloadAndInstall()` (Rust does the HTTP fetch + minisign verify — note this bypasses the webview CSP, so no `connect-src` change is needed) then `relaunch()`. The capability permissions `updater:default` and `process:allow-restart` are in `capabilities/default.json`. The plugin checks `plugins.updater.endpoints` (the GitHub `latest.json`) and only fires once that release is **published** (the workflow drafts releases), which dovetails with the manual publish step.
+
 ## macOS entitlement gotcha
 
 Capturing from **any** input device on macOS requires the microphone permission — this is an OS rule, not a MeterMaid choice, and applies even to USB interfaces. Under the notarized hardened runtime, that means the `com.apple.security.device.audio-input` entitlement in `src-tauri/Entitlements.plist` (wired via `bundle.macOS.entitlements`) is mandatory: without it a *signed* build launches but is silently denied audio. The usage string lives in `src-tauri/Info.plist`.
@@ -56,6 +58,8 @@ Capturing from **any** input device on macOS requires the microphone permission 
 ## Release & signing process
 
 Builds are produced by `.github/workflows/release.yml` (matrix: macOS/Windows/Linux × x64/arm64 via `tauri-action`), triggered by pushing a `v*` tag. **macOS builds are signed with a Developer ID and notarized/stapled** (the `APPLE_*` repo secrets are configured); **Windows builds are currently unsigned** (no `signCommand` in `tauri.conf.json`); Linux packages are unsigned by nature.
+
+**Updater signing is separate from OS code signing.** The in-app self-updater (`tauri-plugin-updater`, see "Self-update" below) requires its own minisign keypair: the public key lives in `tauri.conf.json` (`plugins.updater.pubkey`) and the private key is the `TAURI_SIGNING_PRIVATE_KEY` repo secret (generated with `pnpm tauri signer generate`, empty password → `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` may be empty). This secret is **mandatory** now that `bundle.createUpdaterArtifacts` is on — without it the release build fails. Rotating the key requires shipping a build with the new pubkey *before* any release signed by it, or existing installs will reject the update.
 
 To cut a release after the version PR is merged to `main`:
 
@@ -74,7 +78,7 @@ To cut a release after the version PR is merged to `main`:
    gh run watch <run-id> --exit-status
    ```
 
-4. **Verify before publishing** — confirm all 6 matrix jobs succeeded and assets are complete (expect 14: macOS `.dmg`×2 + `.app.tar.gz`×2, Windows `-setup.exe`×2 + `.msi`×2, Linux `.AppImage`×2 + `.deb`×2 + `.rpm`×2). For macOS, the build log should show `Notarizing ... status Accepted` + `Stapling`:
+4. **Verify before publishing** — confirm all 6 matrix jobs succeeded and assets are complete. Base installers (14): macOS `.dmg`×2 + `.app.tar.gz`×2, Windows `-setup.exe`×2 + `.msi`×2, Linux `.AppImage`×2 + `.deb`×2 + `.rpm`×2. Because `bundle.createUpdaterArtifacts` is enabled, each **updater-capable** bundle (macOS `.app.tar.gz`, Windows `-setup.exe`, Linux `.AppImage`) also ships a detached `.sig` (×6), plus a single `latest.json` update manifest tauri-action assembles across the matrix — so expect ~21 assets total. `latest.json` is what the in-app updater polls; if it's missing, self-update is silently broken (check that the `TAURI_SIGNING_PRIVATE_KEY` secret is set — without it the build fails to produce signed updater artifacts). For macOS, the build log should show `Notarizing ... status Accepted` + `Stapling`:
 
    ```sh
    gh release view v0.2.0 --json isDraft,assets --jq '{isDraft, assets:[.assets[].name]}'

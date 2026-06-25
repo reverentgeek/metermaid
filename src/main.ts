@@ -8,7 +8,9 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "@fontsource/jetbrains-mono/latin-600.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { load, type Store } from "@tauri-apps/plugin-store";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 
 interface DeviceInfo {
 	name: string;
@@ -81,6 +83,12 @@ const errorCopy = $<HTMLButtonElement>("errorCopy");
 const errorDismiss = $<HTMLButtonElement>("errorDismiss");
 const resetHint = $<HTMLDivElement>("resetHint");
 const hintDismiss = $<HTMLButtonElement>("hintDismiss");
+const updateCheckBtn = $<HTMLButtonElement>("updateCheck");
+const updateBanner = $<HTMLDivElement>("updateBanner");
+const updateMessage = $<HTMLSpanElement>("updateMessage");
+const updateNotes = $<HTMLSpanElement>("updateNotes");
+const updateInstall = $<HTMLButtonElement>("updateInstall");
+const updateDismiss = $<HTMLButtonElement>("updateDismiss");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
 
@@ -168,6 +176,95 @@ function reportError(context: string, e: unknown) {
 	setStatus("error", "err");
 	errorMessage.textContent = `${context}: ${detail}`;
 	errorBanner.hidden = false;
+}
+
+// ---- Self-update (tauri-plugin-updater) ----------------------------------
+// On launch and on demand we ask GitHub Releases (via the `latest.json` the
+// release workflow publishes) whether a newer signed build exists. If so, a
+// banner offers a one-click download + relaunch. The download and minisign
+// verification happen in Rust; failures here are non-fatal — being offline, or
+// running a dev build with no newer published release, simply leaves the app
+// unchanged. `currentUpdate` holds the pending handle between check and install.
+let currentUpdate: Update | null = null;
+let updateInFlight = false;
+
+function showUpdateBanner(update: Update) {
+	updateMessage.textContent = `MeterMaid ${update.version} is available${
+		update.currentVersion ? ` (you have ${update.currentVersion})` : ""
+	}.`;
+	updateNotes.textContent = (update.body ?? "").trim();
+	updateNotes.hidden = updateNotes.textContent === "";
+	updateBanner.hidden = false;
+}
+
+// `manual` distinguishes the user clicking "Check for updates" (which deserves
+// visible feedback, including "up to date" and surfaced errors) from the silent
+// check on launch (which stays quiet unless an update is actually found).
+async function checkForUpdates(manual: boolean) {
+	if (updateInFlight) return;
+	if (manual) {
+		updateCheckBtn.disabled = true;
+		updateCheckBtn.textContent = "Checking…";
+	}
+	try {
+		const update = await check();
+		if (update) {
+			currentUpdate = update;
+			showUpdateBanner(update);
+		} else if (manual) {
+			// Brief inline confirmation; the toolbar status is reserved for capture.
+			updateCheckBtn.textContent = "Up to date";
+			setTimeout(() => {
+				updateCheckBtn.textContent = "Check for updates";
+			}, 2000);
+		}
+	} catch (e) {
+		if (manual) reportError("Check for updates", e);
+	} finally {
+		if (manual) {
+			updateCheckBtn.disabled = false;
+			if (updateCheckBtn.textContent === "Checking…") {
+				updateCheckBtn.textContent = "Check for updates";
+			}
+		}
+	}
+}
+
+async function installUpdate() {
+	if (!currentUpdate || updateInFlight) return;
+	updateInFlight = true;
+	updateInstall.disabled = true;
+	updateDismiss.disabled = true;
+	updateInstall.textContent = "Downloading…";
+	try {
+		let downloaded = 0;
+		let total = 0;
+		await currentUpdate.downloadAndInstall((event) => {
+			switch (event.event) {
+				case "Started":
+					total = event.data.contentLength ?? 0;
+					break;
+				case "Progress":
+					downloaded += event.data.chunkLength;
+					updateInstall.textContent = total
+						? `Downloading… ${Math.round((downloaded / total) * 100)}%`
+						: "Downloading…";
+					break;
+				case "Finished":
+					updateInstall.textContent = "Installing…";
+					break;
+			}
+		});
+		// On macOS/Linux the installed bundle is staged and we relaunch into it.
+		// (On Windows the NSIS installer takes over and exits the app itself.)
+		await relaunch();
+	} catch (e) {
+		reportError("Install update", e);
+		updateInFlight = false;
+		updateInstall.disabled = false;
+		updateDismiss.disabled = false;
+		updateInstall.textContent = "Install & Restart";
+	}
 }
 
 function configControlsEnabled(enabled: boolean) {
@@ -711,6 +808,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 	stopBtn.addEventListener("click", () => void stop());
 	resetBtn.addEventListener("click", resetMeasurement);
 	hintDismiss.addEventListener("click", () => void markResetHintSeen());
+	updateCheckBtn.addEventListener("click", () => void checkForUpdates(true));
+	updateInstall.addEventListener("click", () => void installUpdate());
+	updateDismiss.addEventListener("click", () => {
+		updateBanner.hidden = true;
+	});
 	errorDismiss.addEventListener("click", hideError);
 	errorCopy.addEventListener("click", async () => {
 		try {
@@ -772,6 +874,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 	) {
 		await start();
 	}
+
+	// Quietly check for a newer release in the background. Non-blocking and
+	// failure-silent (see checkForUpdates); a found update raises the banner.
+	void checkForUpdates(false);
 
 	// Wait for the bundled fonts before the first draw so the canvas spectrum
 	// labels render in JetBrains Mono rather than briefly flashing a fallback.

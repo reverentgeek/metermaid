@@ -126,9 +126,15 @@ jobs:
           # bundle.windows.signCommand (e.g. Azure Trusted Signing or a local
           # .pfx). Add it there plus any required secrets when you enable it.
           #
-          # Updater signing (optional, only if the updater plugin is enabled):
-          #   TAURI_SIGNING_PRIVATE_KEY          - key from `tauri signer generate`
-          #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD - password for that key
+          # Updater signing — required now that bundle.createUpdaterArtifacts is
+          # enabled. Without these the build fails to sign the update bundle. The
+          # public counterpart lives in tauri.conf.json (plugins.updater.pubkey).
+          # The keypair was generated with an empty password, so the PASSWORD
+          # secret may be unset/empty; add both under Settings -> Secrets:
+          #   TAURI_SIGNING_PRIVATE_KEY          - contents of the generated key file
+          #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD - password for that key (empty here)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # Creates/updates a draft release named after the tag. Review and
           # publish it manually once all matrix jobs have uploaded their assets.

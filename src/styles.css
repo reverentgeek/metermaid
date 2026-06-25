@@ -242,6 +242,60 @@ body {
   color: var(--text);
 }
 
+/* ---- Update banner ---- */
+/* Appears when a newer release is available (checked on launch and via the
+   "Check for updates" button). Accent-tinted to read as good news rather than a
+   fault, and distinct from the red error banner. */
+.update-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(84, 224, 138, 0.1);
+  border-bottom: 1px solid var(--accent);
+}
+.update-banner[hidden] {
+  display: none;
+}
+.update-icon {
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.update-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.update-message {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.update-notes {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: pre-line;
+  max-height: 4.5em;
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.update-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+.update-dismiss:hover {
+  color: var(--text);
+}
+
 /* ---- Config row ---- */
 .config-row {
   display: flex;
