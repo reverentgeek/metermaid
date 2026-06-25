@@ -135,5 +135,34 @@
     <section class="spectrum-wrap">
       <canvas id="spectrum"></canvas>
     </section>
+
+    <div id="aboutModal" class="modal-overlay" hidden>
+      <div class="about-dialog" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+        <button id="aboutClose" class="modal-close" type="button" aria-label="Close">×</button>
+        <svg class="about-logo" viewBox="88 88 336 336" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <g fill="url(#brand-meter)">
+            <rect x="96"  y="96"  width="32" height="320" rx="12" />
+            <rect x="144" y="166" width="32" height="250" rx="12" />
+            <rect x="192" y="250" width="32" height="166" rx="12" />
+            <rect x="240" y="294" width="32" height="122" rx="12" />
+            <rect x="288" y="250" width="32" height="166" rx="12" />
+            <rect x="336" y="166" width="32" height="250" rx="12" />
+            <rect x="384" y="96"  width="32" height="320" rx="12" />
+          </g>
+        </svg>
+        <h2 id="aboutTitle" class="about-name">MeterMaid</h2>
+        <p class="about-version">version <span id="aboutVersion">—</span></p>
+        <p class="about-desc">A cross-platform LUFS / loudness meter</p>
+        <p class="about-author">Created by David Neal</p>
+        <p class="about-links">
+          <a class="about-link" href="https://reverentgeek.com">reverentgeek.com</a>
+          <span class="about-sep" aria-hidden="true">·</span>
+          <a class="about-link" href="https://github.com/reverentgeek/metermaid">GitHub</a>
+          <span class="about-sep" aria-hidden="true">·</span>
+          <a class="about-link" href="https://github.com/reverentgeek/metermaid/issues">Submit feedback</a>
+        </p>
+        <p class="about-copyright">© 2026 David Neal · MIT License</p>
+      </div>
+    </div>
   </body>
 </html>

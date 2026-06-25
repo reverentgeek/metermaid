@@ -571,3 +571,92 @@ body {
   height: 100%;
   display: block;
 }
+
+/* ---- About modal ---- */
+/* A custom, centered About dialog (opened from the macOS "About MeterMaid"
+   menu). Replaces the native panel so the text can be centered and the links
+   are real, clickable links (opened in the browser via the opener plugin). */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 11, 0.6);
+}
+.modal-overlay[hidden] {
+  display: none;
+}
+.about-dialog {
+  position: relative;
+  width: min(360px, calc(100vw - 48px));
+  padding: 28px 32px 24px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+.about-logo {
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 10px;
+}
+.about-name {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+.about-version {
+  margin: 2px 0 16px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.about-desc {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.about-author {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.about-links {
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+.about-link:hover {
+  text-decoration: underline;
+}
+.about-sep {
+  margin: 0 7px;
+  color: var(--muted);
+}
+.about-copyright {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.modal-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.modal-close:hover {
+  color: var(--text);
+}
