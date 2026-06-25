@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-06-25
+
+### Fixed
+
+- The spectrum plot could occasionally start blank when metering began, correcting itself only after the window was resized. The canvas backing store now re-syncs on any layout change (such as bundled fonts finishing loading and reflowing the header), not just on window resizes.
+
 ## [0.3.1] - 2026-06-25
 
 ### Added

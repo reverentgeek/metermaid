@@ -592,8 +592,14 @@ function updateReadouts(m: Metrics) {
 function resizeCanvas() {
 	const dpr = window.devicePixelRatio || 1;
 	const rect = canvas.getBoundingClientRect();
-	canvas.width = Math.max(1, Math.round(rect.width * dpr));
-	canvas.height = Math.max(1, Math.round(rect.height * dpr));
+	const w = Math.max(1, Math.round(rect.width * dpr));
+	const h = Math.max(1, Math.round(rect.height * dpr));
+	// Skip when nothing changed — assigning canvas.width/height clears the buffer
+	// even if the value is identical, and the ResizeObserver below fires an
+	// initial observation plus every layout tick, so guard against pointless work.
+	if (w === canvas.width && h === canvas.height) return;
+	canvas.width = w;
+	canvas.height = h;
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	// Repaint at the new size; while idle the loop is stopped, so without this
 	// the canvas would stay blank/stretched until the next capture.
@@ -787,7 +793,14 @@ function resetMeasurement() {
 
 window.addEventListener("DOMContentLoaded", async () => {
 	resizeCanvas();
+	// `resize` only fires for window-level changes (and catches DPR changes when
+	// dragging between monitors). It misses layout-driven size changes of the
+	// flex-sized canvas — e.g. when bundled fonts finish loading and reflow the
+	// header — which left the backing store stale and the spectrum blank/cropped
+	// until a manual window resize. Observe the element itself so any size change
+	// re-syncs the backing store.
 	window.addEventListener("resize", resizeCanvas);
+	new ResizeObserver(resizeCanvas).observe(canvas);
 
 	// Load persisted settings before touching the controls. Target/ceiling apply
 	// immediately; device/channels/rate are staged as "pending" and reapplied as
