@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-25
+
+### Added
+
+- An application menu with **About MeterMaid** and **Check for Updates…** items — on macOS in the app menu, and on Windows/Linux under a new **Help** menu. Check for Updates runs the same check as the in-app button.
+- A redesigned **About MeterMaid** dialog: a centered in-app panel showing the app version, description, author, and copyright, with clickable links to the author's website, the GitHub repository, and the issue tracker (opened in the default browser).
+
 ## [0.3.0] - 2026-06-25
 
 ### Added

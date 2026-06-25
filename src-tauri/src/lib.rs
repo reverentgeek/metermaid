@@ -3,7 +3,7 @@ mod audio;
 use std::sync::mpsc::{self, Sender, SyncSender};
 
 use audio::{Command, DeviceConfig, DeviceInfo, StreamInfo};
-use tauri::State;
+use tauri::{Emitter, State};
 
 /// Tauri-managed application state: a channel to the audio engine thread.
 struct AppState {
@@ -126,6 +126,75 @@ fn window_guard_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+/// Build the desktop application menu, replacing Tauri's default. **About
+/// MeterMaid** and **Check for Updates…** are custom items that signal the
+/// frontend (via the `menu-about` / `menu-check-updates` events) — About opens
+/// an in-app dialog (centered, with clickable links) rather than the native
+/// panel, which can't be centered or hyperlinked.
+///
+/// On macOS these live in the application menu (alongside the standard Edit and
+/// Window submenus). Windows and Linux have no app menu, so they get a window
+/// menu bar with a single **Help** submenu carrying the same two items.
+#[cfg(desktop)]
+fn build_app_menu<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> tauri::Result<tauri::menu::Menu<R>> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+
+    let about = MenuItemBuilder::with_id("about", "About MeterMaid").build(app)?;
+    let check_updates =
+        MenuItemBuilder::with_id("check-for-updates", "Check for Updates…").build(app)?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let app_menu = SubmenuBuilder::new(app, "MeterMaid")
+            .item(&about)
+            .separator()
+            .item(&check_updates)
+            .separator()
+            .services()
+            .separator()
+            .hide()
+            .hide_others()
+            .show_all()
+            .separator()
+            .quit()
+            .build()?;
+
+        let edit_menu = SubmenuBuilder::new(app, "Edit")
+            .undo()
+            .redo()
+            .separator()
+            .cut()
+            .copy()
+            .paste()
+            .select_all()
+            .build()?;
+
+        let window_menu = SubmenuBuilder::new(app, "Window")
+            .minimize()
+            .maximize()
+            .fullscreen()
+            .separator()
+            .close_window()
+            .build()?;
+
+        MenuBuilder::new(app)
+            .items(&[&app_menu, &edit_menu, &window_menu])
+            .build()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let help_menu = SubmenuBuilder::new(app, "Help")
+            .item(&about)
+            .item(&check_updates)
+            .build()?;
+
+        MenuBuilder::new(app).item(&help_menu).build()
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (tx, rx) = mpsc::channel::<Command>();
@@ -135,13 +204,18 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(window_guard_plugin());
 
-    // The self-updater is desktop-only; `relaunch` after install comes from the
-    // process plugin above (registered on every platform).
+    // Desktop-only: the self-updater (`relaunch` after install comes from the
+    // process plugin above, registered on every platform) and the app menu. The
+    // menu is set here, before any window is created, so the Windows/Linux menu
+    // bar attaches to the window rather than missing the initial creation.
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .menu(build_app_menu);
     }
 
     builder
@@ -150,6 +224,17 @@ pub fn run() {
             let handle = app.handle().clone();
             std::thread::spawn(move || audio::engine_loop(rx, handle));
             Ok(())
+        })
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            // "Check for Updates…" reuses the frontend's updater flow (same banner
+            // and feedback as the in-app button); "About" opens the in-app dialog.
+            "check-for-updates" => {
+                let _ = app.emit("menu-check-updates", ());
+            }
+            "about" => {
+                let _ = app.emit("menu-about", ());
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             list_devices,

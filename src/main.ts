@@ -6,8 +6,10 @@ import "@fontsource/inter/latin-600.css";
 import "@fontsource/inter/latin-700.css";
 import "@fontsource/jetbrains-mono/latin-400.css";
 import "@fontsource/jetbrains-mono/latin-600.css";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { load, type Store } from "@tauri-apps/plugin-store";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -89,6 +91,9 @@ const updateMessage = $<HTMLSpanElement>("updateMessage");
 const updateNotes = $<HTMLSpanElement>("updateNotes");
 const updateInstall = $<HTMLButtonElement>("updateInstall");
 const updateDismiss = $<HTMLButtonElement>("updateDismiss");
+const aboutModal = $<HTMLDivElement>("aboutModal");
+const aboutClose = $<HTMLButtonElement>("aboutClose");
+const aboutVersion = $<HTMLSpanElement>("aboutVersion");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
 
@@ -265,6 +270,19 @@ async function installUpdate() {
 		updateDismiss.disabled = false;
 		updateInstall.textContent = "Install & Restart";
 	}
+}
+
+// ---- About dialog --------------------------------------------------------
+// A custom, centered in-app dialog opened from the macOS "About MeterMaid" menu
+// (via the `menu-about` event). Replaces the native panel so the text can be
+// centered and the links are real, clickable links opened in the user's browser
+// through the opener plugin.
+function showAbout() {
+	aboutModal.hidden = false;
+}
+
+function hideAbout() {
+	aboutModal.hidden = true;
 }
 
 function configControlsEnabled(enabled: boolean) {
@@ -813,6 +831,27 @@ window.addEventListener("DOMContentLoaded", async () => {
 	updateDismiss.addEventListener("click", () => {
 		updateBanner.hidden = true;
 	});
+
+	// About dialog: links open in the system browser (not the webview), and a
+	// backdrop click, the close button, or Escape dismisses it.
+	void getVersion().then((v) => {
+		aboutVersion.textContent = v;
+	});
+	aboutModal.addEventListener("click", (e) => {
+		const target = e.target as HTMLElement;
+		const link = target.closest<HTMLAnchorElement>(".about-link");
+		if (link) {
+			e.preventDefault();
+			void openUrl(link.href);
+			return;
+		}
+		if (target === aboutModal) hideAbout();
+	});
+	aboutClose.addEventListener("click", hideAbout);
+	document.addEventListener("keydown", (e) => {
+		if (e.key === "Escape" && !aboutModal.hidden) hideAbout();
+	});
+
 	errorDismiss.addEventListener("click", hideError);
 	errorCopy.addEventListener("click", async () => {
 		try {
@@ -857,6 +896,13 @@ window.addEventListener("DOMContentLoaded", async () => {
 	await listen<string>("stream-error", (event) => {
 		handleStreamError(event.payload);
 	});
+
+	// The macOS "Check for Updates…" menu item routes here so it shares the
+	// in-app button's flow (banner, "up to date"/error feedback).
+	await listen("menu-check-updates", () => void checkForUpdates(true));
+
+	// The macOS "About MeterMaid" menu item opens the in-app About dialog.
+	await listen("menu-about", () => showAbout());
 
 	// Watch for input devices being plugged in or removed while idle.
 	window.setInterval(() => void pollDevices(), DEVICE_POLL_MS);
