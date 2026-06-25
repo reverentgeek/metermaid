@@ -34,9 +34,9 @@ Implementation note: a "freeze current spectrum as a background reference" featu
 - [ ] Spectrum options: linear/log toggle, adjustable averaging/smoothing, peak vs RMS.
 - [ ] Validate readings against `ffmpeg -af ebur128` in an automated test.
 - [ ] **Spectrum hover readout** — show frequency + dB at the cursor (pairs with the dB grid / target-line overlay above; handy for EQ and the reference-curve work).
-- [ ] **Keyboard shortcut for Reset** (e.g. Space) — the leveling loop hits Reset constantly between patches, so a shortcut tightens the core workflow.
+- [x] **Keyboard shortcut for Reset** (Space) — the leveling loop hits Reset constantly between patches, so a shortcut tightens the core workflow. Gated on capture being active and focus not in an input/select/button.
 
 ## Tooling
 
 - [x] **Frontend UI framework** — investigated; not worth it. Hot path is canvas (a framework doesn't help raw 2D drawing), the DOM-sync surface is small and stable, and a runtime dep fights the lean-bundle / low-idle-CPU goals. Revisit *only* if interactive stateful UI grows substantially — and then reach for signals (Preact/Solid), not React/Vue. Skip Tailwind: hand-written CSS is fine for a finished single-window design.
-- [ ] **Project cSpell dictionary** — add a shared word list (`nyquist`, `ebur`, `LUFS`, `clippy`, `serde`, `SPSC`, `rustfft`, `hotplug`, …) so the editor stops flagging domain terms on every Markdown/source edit.
+- [x] **Project cSpell dictionary** — committed `cspell.json` at the repo root with the shared domain word list (`nyquist`, `ebur`, `LUFS`, `clippy`, `serde`, `SPSC`, `rustfft`, `hotplug`, `cpal`, `ringbuf`, `minisign`, …), so the editor stops flagging domain terms on every Markdown/source edit. (Editor-agnostic; the per-machine `.vscode/settings.json` is gitignored.)
