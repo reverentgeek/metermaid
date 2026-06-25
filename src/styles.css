@@ -625,8 +625,11 @@ body {
   font-size: 13px;
 }
 .about-links {
-  margin: 0 0 16px;
+  margin: 0 0 4px;
   font-size: 13px;
+}
+.about-links + .about-links {
+  margin-bottom: 16px;
 }
 .about-link {
   color: var(--accent);
