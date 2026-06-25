@@ -1,0 +1,26 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "clippy",
+    "cpal",
+    "dbtp",
+    "deinterleave",
+    "ebur",
+    "ebur128",
+    "hotplug",
+    "lufs",
+    "metermaid",
+    "minisign",
+    "notarization",
+    "notarize",
+    "notarized",
+    "nyquist",
+    "reverentgeek",
+    "ringbuf",
+    "rustfft",
+    "serde",
+    "spsc",
+    "tauri"
+  ]
+}
