@@ -48,6 +48,7 @@
         <input id="autostart" type="checkbox" />
         Auto-start
       </label>
+      <button id="updateCheck" class="btn btn-small" type="button" title="Check for a newer version of MeterMaid">Check for updates</button>
     </div>
 
     <div id="resetHint" class="hint" hidden>
@@ -64,6 +65,16 @@
       </div>
       <button id="errorCopy" class="btn btn-small" type="button" title="Copy the error details">Copy</button>
       <button id="errorDismiss" class="error-dismiss" type="button" title="Dismiss" aria-label="Dismiss error">×</button>
+    </div>
+
+    <div id="updateBanner" class="update-banner" hidden>
+      <span class="update-icon" aria-hidden="true">⬆</span>
+      <div class="update-body">
+        <span id="updateMessage" class="update-message" role="status"></span>
+        <span id="updateNotes" class="update-notes"></span>
+      </div>
+      <button id="updateInstall" class="btn btn-small btn-primary" type="button" title="Download the update and restart MeterMaid">Install &amp; Restart</button>
+      <button id="updateDismiss" class="update-dismiss" type="button" title="Dismiss" aria-label="Dismiss update notice">×</button>
     </div>
 
     <section class="readouts">

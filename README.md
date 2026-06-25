@@ -51,6 +51,10 @@ MeterMaid remembers your setup between launches: the window size, position, and 
 
 Enable **Auto-start** to begin capturing on launch whenever a valid saved device and channels are restored.
 
+## Updates
+
+MeterMaid checks for a newer release on launch and shows a banner when one is available — click **Install & Restart** to download the signed update and relaunch into it. You can also check on demand with the **Check for updates** button. Each update is verified against MeterMaid's signing key before it is applied. Self-update covers the macOS, Windows, and Linux **AppImage** builds; if you installed the Linux `.deb` or `.rpm`, update through your package manager instead.
+
 ## Develop
 
 ```sh
@@ -109,7 +113,7 @@ Builds run **unsigned** by default — usable for testing, but they trip Gatekee
 
 - **macOS** — `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`
 - **Windows** — `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD`
-- **Updater (optional)** — `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- **Updater (required)** — `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. These sign the in-app self-updater artifacts and are **mandatory** for a release build (`bundle.createUpdaterArtifacts` is enabled). Generate the keypair once with `pnpm tauri signer generate -w metermaid-updater.key`; put the private key file's contents in `TAURI_SIGNING_PRIVATE_KEY`, its password in `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty if none), and the matching public key in `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`. Keep the private key secret — losing it means existing installs can no longer verify updates.
 
 ## Platform support
 

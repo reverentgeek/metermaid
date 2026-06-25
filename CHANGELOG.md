@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-25
+
+### Added
+
+- MeterMaid can now update itself. It checks GitHub Releases for a newer signed build on launch (quietly — nothing appears unless an update exists) and via a **Check for updates** button in the config row. When a newer version is available, a banner shows the version and release notes with a one-click **Install & Restart**; the download is signature-verified before it is applied. Self-update covers the macOS, Windows, and Linux AppImage builds (Linux `.deb`/`.rpm` installs continue to update through their package manager).
+
 ## [0.2.0] - 2026-06-23
 
 ### Added

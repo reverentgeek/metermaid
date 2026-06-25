@@ -130,10 +130,21 @@ fn window_guard_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 pub fn run() {
     let (tx, rx) = mpsc::channel::<Command>();
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(window_guard_plugin())
+        .plugin(tauri_plugin_process::init())
+        .plugin(window_guard_plugin());
+
+    // The self-updater is desktop-only; `relaunch` after install comes from the
+    // process plugin above (registered on every platform).
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .manage(AppState { tx })
         .setup(move |app| {
             let handle = app.handle().clone();

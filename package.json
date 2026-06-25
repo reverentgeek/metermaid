@@ -1,9 +1,9 @@
 {
   "name": "metermaid",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
-  "packageManager": "pnpm@11.8.0+sha512.c1f5e7c4cb241c8f174b743851d82f42b802324afc8b0f116b96adb15aa06664948dde36960a3ba1079ba5b4b29dd0140135b94b5b5f5263592249d68e555f26",
+  "packageManager": "pnpm@11.9.0+sha512.bd682d5d03fe525ef7c9fd6780c6884d1e756ac4c9c9fe00c538782824310dcf90e3ddc4f53835f06dfaebd5085e41855e0bcbb3b60de2ac5bbab89e5036f03b",
   "description": "MeterMaid — a cross-platform LUFS / loudness meter built with Tauri",
   "author": "David Neal <david@reverentgeek.com>",
   "license": "MIT",
@@ -26,15 +26,17 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-store": "^2.4.3"
+    "@tauri-apps/plugin-process": "^2.3.0",
+    "@tauri-apps/plugin-store": "^2.4.3",
+    "@tauri-apps/plugin-updater": "^2.9.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.0",
+    "@biomejs/biome": "^2.5.1",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@tauri-apps/cli": "^2.11.3",
     "markdownlint-cli2": "^0.22.1",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.1.0"
   }
 }
