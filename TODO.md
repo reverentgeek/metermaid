@@ -27,13 +27,16 @@ Implementation note: a "freeze current spectrum as a background reference" featu
 
 ## Possible enhancements
 
-- [ ] Numeric **dB grid / target line overlay** on the spectrum.
-- [ ] **Loudness history** graph (integrated/short-term over time).
+- [ ] **Spectrum reference lines.** Note: the spectrum already draws a numeric dB grid (horizontal lines + labels every 20 dB) and a frequency grid in `drawSpectrum` — so the "dB grid" is largely done. Two distinct follow-ups remain, which the original "dB grid / target line overlay" item conflated:
+  - **Ceiling reference line** (easy, dimensionally correct) — draw a horizontal line at the −1 dBTP ceiling (and optionally 0 dBFS) over the bars, tinting any band that crosses it. The spectrum Y-axis is per-band FFT peak magnitude (dBFS), which is the same family as the ceiling, so this is meaningful. Reuses the existing `toY(db)` helper (~20–30 lines).
+  - **dB grid polish** (trivial) — optionally finer ticks (every 10 dB) and/or a toggle.
+  - **Do NOT draw the LUFS target on the spectrum.** The Target control is integrated LUFS (BS.1770-weighted, time-averaged) — a different quantity from per-band FFT magnitude, so a horizontal target line on the spectrum would be dimensionally wrong and misleading. The LUFS target line belongs on the loudness history graph below, where the Y-axis *is* LUFS.
+- [ ] **Loudness history** graph (integrated/short-term over time). Natural home for a **−20 LUFS target reference line** (and standard-preset lines), since its Y-axis is loudness — unlike the spectrum.
 - [ ] Selectable **loudness standard presets** (streaming −14, broadcast −23 EBU R128, etc.).
 - [ ] **A/B compare** two captures for matching patch levels.
 - [ ] Spectrum options: linear/log toggle, adjustable averaging/smoothing, peak vs RMS.
 - [ ] Validate readings against `ffmpeg -af ebur128` in an automated test.
-- [ ] **Spectrum hover readout** — show frequency + dB at the cursor (pairs with the dB grid / target-line overlay above; handy for EQ and the reference-curve work).
+- [ ] **Spectrum hover readout** — show frequency + dB at the cursor (pairs with the spectrum reference lines above; handy for EQ and the reference-curve work).
 - [x] **Keyboard shortcut for Reset** (Space) — the leveling loop hits Reset constantly between patches, so a shortcut tightens the core workflow. Gated on capture being active and focus not in an input/select/button.
 
 ## Tooling
