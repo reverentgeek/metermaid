@@ -2231,7 +2231,7 @@ dependencies = [
 
 [[package]]
 name = "metermaid"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cpal",
  "ebur128",
