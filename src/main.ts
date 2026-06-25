@@ -863,6 +863,18 @@ window.addEventListener("DOMContentLoaded", async () => {
 	aboutClose.addEventListener("click", hideAbout);
 	document.addEventListener("keydown", (e) => {
 		if (e.key === "Escape" && !aboutModal.hidden) hideAbout();
+		// Space resets the measurement — the leveling loop hits Reset constantly
+		// between patches, so a shortcut tightens the core workflow. Gated on the
+		// Reset button being visible (i.e. capturing) and on focus not being in a
+		// field/button, so Space still types/activates normally there.
+		if (e.code === "Space" && !resetBtn.hidden) {
+			const t = e.target as HTMLElement | null;
+			const tag = t?.tagName;
+			if (tag !== "INPUT" && tag !== "BUTTON" && tag !== "SELECT") {
+				e.preventDefault();
+				resetMeasurement();
+			}
+		}
 	});
 
 	errorDismiss.addEventListener("click", hideError);
