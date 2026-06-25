@@ -38,5 +38,5 @@ Implementation note: a "freeze current spectrum as a background reference" featu
 
 ## Tooling
 
-- [ ] **Frontend UI** - investigate the usefulness of migrating the UI to React, Vue, Solidjs, or some other UI framework. Same for CSS, like TailwindCSS.
+- [x] **Frontend UI framework** — investigated; not worth it. Hot path is canvas (a framework doesn't help raw 2D drawing), the DOM-sync surface is small and stable, and a runtime dep fights the lean-bundle / low-idle-CPU goals. Revisit *only* if interactive stateful UI grows substantially — and then reach for signals (Preact/Solid), not React/Vue. Skip Tailwind: hand-written CSS is fine for a finished single-window design.
 - [ ] **Project cSpell dictionary** — add a shared word list (`nyquist`, `ebur`, `LUFS`, `clippy`, `serde`, `SPSC`, `rustfft`, `hotplug`, …) so the editor stops flagging domain terms on every Markdown/source edit.
