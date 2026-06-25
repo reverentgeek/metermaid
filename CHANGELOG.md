@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-06-25
+
+### Added
+
+- **Space resets the measurement** while capturing — the leveling loop hits Reset constantly between patches, so the shortcut removes a mouse round-trip from the most-repeated action. It's ignored when focus is in an input, select, or button so Space still types and activates normally there, and the Reset button tooltip advertises it.
+
+### Changed
+
+- The About dialog now puts **Submit feedback** on its own line so it no longer wraps mid-phrase.
+
+### Internal
+
+- Added a committed `cspell.json` project dictionary with the shared domain word list (`cpal`, `ebur128`, `lufs`, `rustfft`, `ringbuf`, `minisign`, …) so editors stop flagging domain terms.
+
 ## [0.3.2] - 2026-06-25
 
 ### Fixed
