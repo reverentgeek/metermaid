@@ -21,7 +21,7 @@ Implementation note: a "freeze current spectrum as a background reference" featu
 - [x] Add hardened-runtime entitlements file (`com.apple.security.device.audio-input`).
 - [ ] Decide on **Windows / Linux** support (changes the signing budget and the webview-audio consistency story — see notes from initial design discussion).
 - [ ] CI to produce signed builds reproducibly for contributors.
-- [ ] **Auto-updater** — add `tauri-plugin-updater` so users get updates in-app instead of manually re-downloading each release. macOS signing is already in place, and `release.yml` already stubs `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` for signing the update artifacts.
+- [x] **Auto-updater** — `tauri-plugin-updater` ships in 0.3.0: silent launch + manual ("Check for updates") checks, an Install & Restart banner with release notes, and minisign-verified downloads. `release.yml` signs the update artifacts and publishes `latest.json`. Requires the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets.
 - [ ] **Windows code signing** — builds are currently unsigned, so SmartScreen warns on first run. Configure `bundle.windows.signCommand` (Azure Trusted Signing or a `.pfx`) plus the matching secrets.
 - [ ] **Automate the release download table** — generate the per-OS asset-link table in `release.yml` from the uploaded artifacts instead of hand-building the release notes each time (error-prone — asset names must match exactly).
 
@@ -38,4 +38,5 @@ Implementation note: a "freeze current spectrum as a background reference" featu
 
 ## Tooling
 
+- [ ] **Frontend UI** - investigate the usefulness of migrating the UI to React, Vue, Solidjs, or some other UI framework. Same for CSS, like TailwindCSS.
 - [ ] **Project cSpell dictionary** — add a shared word list (`nyquist`, `ebur`, `LUFS`, `clippy`, `serde`, `SPSC`, `rustfft`, `hotplug`, …) so the editor stops flagging domain terms on every Markdown/source edit.
