@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Multichannel capture on Windows via ASIO.** Multichannel interfaces such as the Line 6 Helix Stadium XL now expose all their channels on Windows (e.g. Ch 1–8) through the **ASIO** host, where WASAPI shared mode reported only a single channel. ASIO devices appear in the input picker tagged `(ASIO)` next to their WASAPI endpoint; pick the `(ASIO)` entry for multichannel. ASIO is exclusive-access and its sample rate is set in the device's own control panel. This is x64-Windows only (no ARM64 ASIO SDK); macOS, Linux, and Windows-ARM64 are unaffected. See the README "ASIO multichannel capture" section.
+
+### Changed
+
+- Upgraded **cpal 0.15 → 0.18**, which adds the 24-bit ASIO sample support the Helix driver requires (plus newer audio-backend improvements across platforms).
+
+### Internal
+
+- The distributed **Windows-x64 binary is now licensed GPLv3** because it links the (GPLv3-or-Steinberg) ASIO SDK; MeterMaid's source and all other platform binaries remain MIT. The SDK is vendored at `third-party/asio` and linked only on the `x86_64-pc-windows-msvc` target. CI gained a Windows-x64 leg that build-tests the ASIO path.
+
 ## [0.3.3] - 2026-06-25
 
 ### Added
