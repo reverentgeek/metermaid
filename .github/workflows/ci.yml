@@ -8,31 +8,67 @@ on:
 jobs:
   # Detect which part of the monorepo changed so we can skip the expensive app
   # matrix on website-only changes (and skip the site build on app-only changes).
-  # The app/audit jobs below are gated on `app`; when a PR touches only site/,
-  # they're SKIPPED — and GitHub counts a skipped required check as passing, so
-  # the required contexts (build-and-test (macos/ubuntu-latest), audit) don't
-  # block a website-only PR. A workflow-level paths filter would instead leave
-  # those checks pending forever, blocking the merge — hence this job-level gate.
+  # The app/audit jobs below are gated on `app`; when a PR touches only site
+  # files they're SKIPPED — and GitHub counts a skipped required check as
+  # passing, so the required contexts (build-and-test (macos/ubuntu-latest),
+  # audit) don't block a website-only PR. A workflow-level paths filter would
+  # instead leave those checks pending forever, blocking the merge — hence this
+  # job-level gate.
+  #
+  # Classification is an explicit git diff rather than a glob-filter action:
+  # "app = any changed file that isn't a site file" can't be expressed as an
+  # OR-of-globs (a leading '**' always wins over a later '!negation'), so we
+  # walk the changed-file list directly. Site files = site/** plus the
+  # site-owned root files (netlify.toml and the site-deploy workflow).
   changes:
     runs-on: ubuntu-latest
     outputs:
-      app: ${{ steps.filter.outputs.app }}
-      site: ${{ steps.filter.outputs.site }}
+      app: ${{ steps.classify.outputs.app }}
+      site: ${{ steps.classify.outputs.site }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            app:
-              - '**'
-              - '!site/**'
-              - '!netlify.toml'
-              - '!.github/workflows/site-deploy.yml'
-            site:
-              - 'site/**'
-              - 'netlify.toml'
-              - '.github/workflows/site-deploy.yml'
+          fetch-depth: 0
+      - id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE_SHA"
+          else
+            base="$PUSH_BEFORE"
+          fi
+          # Fall back to the previous commit if the base is missing or unknown
+          # (e.g. a brand-new branch's first push reports an all-zero before).
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
+          fi
+          changed="$(git diff --name-only "$base" HEAD)"
+          echo "Base: $base"
+          echo "Changed files:"
+          printf '%s\n' "$changed" | sed 's/^/  /'
+          app=false
+          site=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              site/*|netlify.toml|.github/workflows/site-deploy.yml) site=true ;;
+              *) app=true ;;
+            esac
+          done <<< "$changed"
+          # Safety net: if nothing classified (e.g. an empty diff) run everything
+          # rather than silently skipping all CI.
+          if [ "$app" = false ] && [ "$site" = false ]; then
+            app=true
+            site=true
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+          echo "Classified: app=$app site=$site"
 
   build-and-test:
     needs: changes
