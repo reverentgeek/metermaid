@@ -99,6 +99,7 @@ const updateDismiss = $<HTMLButtonElement>("updateDismiss");
 const aboutModal = $<HTMLDivElement>("aboutModal");
 const aboutClose = $<HTMLButtonElement>("aboutClose");
 const aboutVersion = $<HTMLSpanElement>("aboutVersion");
+const aboutAsio = $<HTMLParagraphElement>("aboutAsio");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
 
@@ -878,6 +879,13 @@ window.addEventListener("DOMContentLoaded", async () => {
 	void getVersion().then((v) => {
 		aboutVersion.textContent = v;
 	});
+	// Surface the ASIO trademark + GPLv3 notice only on the build that links ASIO
+	// (x64 Windows); that binary is GPLv3 while the rest stay MIT.
+	void invoke<boolean>("asio_build")
+		.then((on) => {
+			if (on) aboutAsio.hidden = false;
+		})
+		.catch(() => {});
 	aboutModal.addEventListener("click", (e) => {
 		const target = e.target as HTMLElement;
 		const link = target.closest<HTMLAnchorElement>(".about-link");

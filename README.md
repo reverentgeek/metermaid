@@ -45,6 +45,8 @@ So to dial in a level:
 
 The app meters any **input device** the OS exposes. To meter a hardware unit’s USB output (like a Helix), connect it over USB and select it in the device dropdown. Its output serves as input to the computer. To meter software/playback, route it through a virtual device, such as [BlackHole](https://github.com/ExistentialAudio/BlackHole), and select it.
 
+**Windows — multichannel interfaces.** A multichannel interface such as the Line 6 Helix can appear twice in the dropdown: a plain entry (Windows/WASAPI, which exposes only a single channel) and an **`(ASIO)`** entry (which exposes every channel). Select the **`(ASIO)`** entry to meter individual channels — Ch 1–2 (stereo) through Ch 8. ASIO is exclusive-access, so close any DAW or app currently using the device first, and the sample rate is whatever is set in the device's own ASIO control panel. This requires a 64-bit (**x64**) Windows build; on **Windows on ARM (ARM64)** there is no ASIO driver SDK, so a multichannel device is limited to the single channel WASAPI reports (see [Platform support](#asio-multichannel-capture-windows-x64)).
+
 ## Settings
 
 MeterMaid remembers your setup between launches: the window size, position, and monitor, as well as the selected device, channels, sample rate, target LUFS, and clip ceiling. Restored selections are re-validated against the hardware actually present. If the saved device is gone, it falls back to the system default with a notice, and invalid channels or sample rates fall back gracefully. If the monitor the window was last on has been disconnected, the window is recentered on an available display rather than restored off-screen.

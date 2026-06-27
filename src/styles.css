@@ -648,6 +648,13 @@ body {
   font-size: 11px;
   color: var(--muted);
 }
+.about-asio {
+  margin: 10px 0 0;
+  max-width: 300px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--muted);
+}
 .modal-close {
   position: absolute;
   top: 8px;

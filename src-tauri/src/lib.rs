@@ -55,6 +55,14 @@ fn reset_integrated(state: State<AppState>) -> Result<(), String> {
     state.tx.send(Command::Reset).map_err(|e| e.to_string())
 }
 
+/// Whether this build links the ASIO SDK (x64 Windows only). The About dialog
+/// uses it to show the ASIO trademark attribution and the GPLv3 notice that
+/// applies to this one binary.
+#[tauri::command]
+fn asio_build() -> bool {
+    cfg!(all(windows, target_arch = "x86_64"))
+}
+
 /// After `tauri-plugin-window-state` restores the saved geometry, make sure the
 /// window is still usable: if the monitor it was last on is gone (e.g. an
 /// external display was unplugged) the restored position can land entirely
@@ -241,7 +249,8 @@ pub fn run() {
             get_device_config,
             start_capture,
             stop_capture,
-            reset_integrated
+            reset_integrated,
+            asio_build
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
