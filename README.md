@@ -45,6 +45,8 @@ So to dial in a level:
 
 The app meters any **input device** the OS exposes. To meter a hardware unit’s USB output (like a Helix), connect it over USB and select it in the device dropdown. Its output serves as input to the computer. To meter software/playback, route it through a virtual device, such as [BlackHole](https://github.com/ExistentialAudio/BlackHole), and select it.
 
+**Windows — multichannel interfaces.** A multichannel interface such as the Line 6 Helix can appear twice in the dropdown: a plain entry (Windows/WASAPI, which exposes only a single channel) and an **`(ASIO)`** entry (which exposes every channel). Select the **`(ASIO)`** entry to meter individual channels — Ch 1–2 (stereo) through Ch 8. ASIO is exclusive-access, so close any DAW or app currently using the device first, and the sample rate is whatever is set in the device's own ASIO control panel. This requires a 64-bit (**x64**) Windows build; on **Windows on ARM (ARM64)** there is no ASIO driver SDK, so a multichannel device is limited to the single channel WASAPI reports (see [Platform support](#asio-multichannel-capture-windows-x64)).
+
 ## Settings
 
 MeterMaid remembers your setup between launches: the window size, position, and monitor, as well as the selected device, channels, sample rate, target LUFS, and clip ceiling. Restored selections are re-validated against the hardware actually present. If the saved device is gone, it falls back to the system default with a notice, and invalid channels or sample rates fall back gracefully. If the monitor the window was last on has been disconnected, the window is recentered on an available display rather than restored off-screen.
@@ -132,8 +134,28 @@ On **Windows on ARM (ARM64)**, this is the usual cause of `error: linker 'link.e
 
 Mixing an x64 Rust toolchain (running under emulation) with only the ARM64 toolset installed — or vice versa — is the most common reason the linker isn't found; keep the Rust host triple and the installed C++ toolset on the same architecture.
 
+### ASIO multichannel capture (Windows x64)
+
+Windows audio (WASAPI shared mode) opens devices at the endpoint's "Default Format", which exposes most multichannel interfaces — including the Line 6 Helix family — as a single channel. To meter individual channels of such a device on Windows, MeterMaid also opens the **ASIO** host, where the driver presents all of its channels (e.g. 8 on the Helix). ASIO devices appear in the input picker tagged `(ASIO)` alongside their WASAPI endpoint; pick the `(ASIO)` entry for multichannel. ASIO is exclusive-access (only one app at a time), and its sample rate / buffer size are set in the device's own control panel.
+
+This is **x64 Windows only** — there is no ARM64 ASIO SDK, so the Windows-ARM64 build (and macOS/Linux, which use CoreAudio/ALSA) is WASAPI/native-host only. Building the ASIO path requires, in addition to the C++ toolchain above:
+
+- **LLVM/Clang** (for `libclang`, used by `bindgen`): install it (e.g. `choco install llvm`) and set `LIBCLANG_PATH` (e.g. `C:\Program Files\LLVM\bin`).
+- The **vendored ASIO SDK** at [`third-party/asio`](third-party/asio), pointed to by the `CPAL_ASIO_DIR` environment variable.
+- A build run from a **VS x64 Native Tools Command Prompt** (so the MSVC C++ compiler is on `PATH`), with both variables set:
+
+  ```bat
+  set CPAL_ASIO_DIR=%CD%\third-party\asio
+  set LIBCLANG_PATH=C:\Program Files\LLVM\bin
+  pnpm tauri dev
+  ```
+
+The ASIO host is enabled via a target-scoped cpal feature (`cfg(all(windows, target_arch = "x86_64"))`), so every other target builds unchanged with no ASIO prerequisites. CI build-tests this path on a Windows-x64 runner. Note the licensing consequence for the shipped Windows-x64 binary under [License](#license).
+
 On **Linux**, the Tauri stack still depends on GTK3 / WebKitGTK. `cargo audit` therefore reports several "unmaintained" advisories for transitive GTK3 (`gtk`, `gdk`, `atk`, …) and `glib` crates, plus `unic-*` crates pulled in via Tauri's URL handling. These are not exploitable vulnerabilities for this app and are tracked upstream by the Tauri project; they are acknowledged in [`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml) and will clear as Tauri migrates off GTK3.
 
 ## License
 
-Released under the [MIT License](LICENSE). © 2026 David Neal.
+MeterMaid's source is released under the [MIT License](LICENSE). © 2026 David Neal.
+
+**One exception, for the Windows-x64 binary only.** That build links the [Steinberg ASIO SDK](third-party/asio) for multichannel capture (see "ASIO" under Platform support). The SDK is dual-licensed (Steinberg ASIO License or GPLv3); MeterMaid uses the GPLv3 option, and because GPLv3 is copyleft, the **distributed Windows-x64 installer is covered by the [GNU GPL v3](LICENSE-GPL-3.0.txt)**. This applies only to that one binary artifact — the MeterMaid source stays MIT, as do the macOS, Linux, and Windows-ARM64 binaries (none of which link ASIO). "ASIO" is a trademark of Steinberg Media Technologies GmbH.

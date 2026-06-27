@@ -10,7 +10,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # windows-latest covers the x64 ASIO build path (cfg-gated to
+        # x86_64-pc-windows-msvc) so it can't silently rot. ARM64 Windows has no
+        # ASIO SDK and isn't a host runner, so it's left to the release build.
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -41,6 +44,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      # The x64 Windows build links ASIO (cfg-gated), which compiles the vendored
+      # SDK's C++ via the `cc` crate (needs the MSVC toolchain on PATH) and runs
+      # bindgen (needs libclang). These steps are no-ops on Linux/macOS.
+      - name: Set up MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Configure ASIO build env (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "CPAL_ASIO_DIR=${GITHUB_WORKSPACE}/third-party/asio" >> "$GITHUB_ENV"
+          # LLVM is preinstalled on the GitHub windows runner image; bindgen
+          # needs libclang. Adjust if the image layout changes.
+          echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile

@@ -118,6 +118,24 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.target }}
 
+      # Only the x64 Windows binary links ASIO (cfg-gated to
+      # x86_64-pc-windows-msvc). It compiles the vendored SDK's C++ via the `cc`
+      # crate (needs the MSVC toolchain) and runs bindgen (needs libclang). The
+      # ARM64 Windows leg has no ASIO SDK and is built WASAPI-only.
+      - name: Set up MSVC environment (Windows x64 / ASIO)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Configure ASIO build env (Windows x64 / ASIO)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: |
+          echo "CPAL_ASIO_DIR=${GITHUB_WORKSPACE}/third-party/asio" >> "$GITHUB_ENV"
+          # LLVM is preinstalled on the GitHub windows runner image (libclang).
+          echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 

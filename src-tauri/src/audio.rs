@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::Sample;
 use ebur128::{EbuR128, Mode};
 use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::HeapRb;
@@ -42,9 +43,24 @@ const CANDIDATE_RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_
 /// Scratch size (samples) used to drain the SPSC ring on the engine thread.
 const DRAIN_CHUNK: usize = 8192;
 
+/// Identity prefix marking an ASIO-host device. The default (WASAPI/CoreAudio/
+/// ALSA) host uses the bare device name as its id, so settings saved before
+/// ASIO existed still resolve.
+#[cfg(all(windows, target_arch = "x86_64"))]
+const ASIO_ID_PREFIX: &str = "asio:";
+
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceInfo {
+    /// Host-qualified, stable identity: the dropdown value, the `settings.json`
+    /// key, and what `start_capture` / `get_device_config` receive. ASIO devices
+    /// are prefixed (`asio:`); default-host devices use the bare name.
+    pub id: String,
+    /// Raw device name, for display.
     pub name: String,
+    /// Which host the device belongs to: `"default"` or `"asio"`. Drives the
+    /// disambiguating label and the (advisory) sample-rate picker.
+    pub host: String,
     pub is_default: bool,
 }
 
@@ -369,106 +385,162 @@ may be using the device exclusively."
     }
 }
 
-/// Map a cpal `DefaultStreamConfigError` (raised while reading a device's
-/// capabilities) to an actionable message naming the device.
-fn explain_default_config_error(device: &str, err: cpal::DefaultStreamConfigError) -> String {
-    use cpal::DefaultStreamConfigError::*;
-    match err {
-        DeviceNotAvailable => {
+/// Map a cpal `Error` raised while reading a device's capabilities
+/// (`default_input_config`) to an actionable message naming the device.
+fn explain_default_config_error(device: &str, err: cpal::Error) -> String {
+    use cpal::ErrorKind::*;
+    match err.kind() {
+        DeviceNotAvailable | DeviceChanged => {
             format!("“{device}” is no longer available. Reconnect it or pick another input device.")
         }
-        StreamTypeNotSupported => {
+        UnsupportedConfig | UnsupportedOperation => {
             format!("“{device}” doesn’t expose a capture format MeterMaid can read.")
         }
-        other => format!(
-            "Couldn’t read the audio settings for “{device}”: {other}.{}",
+        _ => format!(
+            "Couldn’t read the audio settings for “{device}”: {err}.{}",
             mic_permission_hint()
         ),
     }
 }
 
-/// Map a cpal `BuildStreamError` (raised while opening the capture stream) to an
-/// actionable message. Backend-specific failures — where a denied microphone
-/// permission usually lands — carry the permission hint.
-fn explain_build_error(device: &str, err: cpal::BuildStreamError) -> String {
-    use cpal::BuildStreamError::*;
-    match err {
-        DeviceNotAvailable => {
+/// Map a cpal `Error` raised while opening the capture stream
+/// (`build_input_stream`) to an actionable message. Backend failures — where a
+/// denied microphone permission usually lands — carry the permission hint.
+fn explain_build_error(device: &str, err: cpal::Error) -> String {
+    use cpal::ErrorKind::*;
+    match err.kind() {
+        DeviceNotAvailable | DeviceChanged => {
             format!("“{device}” is no longer available. Reconnect it or pick another input device.")
         }
-        StreamConfigNotSupported => format!(
+        // ASIO drivers are exclusive-access: only one app may hold the device.
+        DeviceBusy => format!(
+            "“{device}” is in use by another application. ASIO devices allow only one app at a \
+time — close the other app (such as a DAW) and try again."
+        ),
+        UnsupportedConfig => format!(
             "“{device}” doesn’t support the selected sample rate or channels. \
 Try a different sample rate."
         ),
-        InvalidArgument => format!(
+        InvalidInput => format!(
             "MeterMaid requested invalid capture settings for “{device}”. \
 Try a different channel or sample-rate selection."
         ),
-        other => format!(
-            "Couldn’t open “{device}” for capture: {other}.{}",
+        _ => format!(
+            "Couldn’t open “{device}” for capture: {err}.{}",
             mic_permission_hint()
         ),
     }
 }
 
-/// Map a cpal `PlayStreamError` (raised while starting the built stream) to an
+/// Map a cpal `Error` raised while starting the built stream (`play`) to an
 /// actionable message.
-fn explain_play_error(device: &str, err: cpal::PlayStreamError) -> String {
-    use cpal::PlayStreamError::*;
-    match err {
-        DeviceNotAvailable => {
+fn explain_play_error(device: &str, err: cpal::Error) -> String {
+    use cpal::ErrorKind::*;
+    match err.kind() {
+        DeviceNotAvailable | DeviceChanged => {
             format!("“{device}” is no longer available. Reconnect it or pick another input device.")
         }
-        other => format!(
-            "Couldn’t start capture on “{device}”: {other}.{}",
+        _ => format!(
+            "Couldn’t start capture on “{device}”: {err}.{}",
             mic_permission_hint()
         ),
     }
 }
 
-fn find_device(name: &Option<String>) -> Result<cpal::Device, String> {
-    let host = cpal::default_host();
-    match name {
-        Some(name) => host
-            .input_devices()
-            .map_err(|e| format!("Couldn’t list input devices: {e}"))?
-            .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
-            .ok_or_else(|| {
-                format!(
-                    "Input device “{name}” wasn’t found. It may have been disconnected — \
-pick another device from the list."
-                )
-            }),
-        None => host.default_input_device().ok_or_else(|| {
-            "No input device found. Connect a microphone or audio interface and try again."
-                .to_string()
-        }),
-    }
+/// The ASIO host (x64 Windows only); absent on every other build. cpal keeps
+/// WASAPI as the default host, so ASIO is opened explicitly as a second host.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn asio_host() -> Result<cpal::Host, String> {
+    cpal::host_from_id(cpal::HostId::Asio).map_err(|e| format!("The ASIO host is unavailable: {e}"))
 }
 
-pub fn list_input_devices() -> Result<Vec<DeviceInfo>, String> {
+/// Find an input device by its raw name within a specific host.
+fn find_in_host(host: &cpal::Host, name: &str) -> Result<cpal::Device, String> {
+    host.input_devices()
+        .map_err(|e| format!("Couldn’t list input devices: {e}"))?
+        .find(|d| d.to_string() == name)
+        .ok_or_else(|| {
+            format!(
+                "Input device “{name}” wasn’t found. It may have been disconnected — \
+pick another device from the list."
+            )
+        })
+}
+
+/// Resolve a device id (as produced by `list_input_devices`) to a cpal device,
+/// routing to the host the id names. `None` selects the default host's default
+/// device. An `asio:`-prefixed id targets the ASIO host (x64 Windows); any other
+/// id is a default-host device name (so settings saved before ASIO still work).
+fn find_device(id: &Option<String>) -> Result<cpal::Device, String> {
+    let Some(id) = id else {
+        return cpal::default_host().default_input_device().ok_or_else(|| {
+            "No input device found. Connect a microphone or audio interface and try again."
+                .to_string()
+        });
+    };
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    if let Some(name) = id.strip_prefix(ASIO_ID_PREFIX) {
+        return find_in_host(&asio_host()?, name);
+    }
+    find_in_host(&cpal::default_host(), id)
+}
+
+/// Enumerate input devices. `include_asio` controls whether the (x64-Windows)
+/// ASIO host is also enumerated: cpal must *load* each ASIO driver to list it,
+/// which is slow and disturbs other ASIO apps, so the idle hotplug poll passes
+/// `false` and only refreshes ASIO when the default-host topology changes.
+pub fn list_input_devices(include_asio: bool) -> Result<Vec<DeviceInfo>, String> {
     let host = cpal::default_host();
-    let default_name = host.default_input_device().and_then(|d| d.name().ok());
+    let default_name = host.default_input_device().map(|d| d.to_string());
     let mut out = Vec::new();
     for device in host.input_devices().map_err(|e| e.to_string())? {
-        if let Ok(name) = device.name() {
-            let is_default = Some(&name) == default_name.as_ref();
-            out.push(DeviceInfo { name, is_default });
-        }
+        let name = device.to_string();
+        let is_default = Some(&name) == default_name.as_ref();
+        out.push(DeviceInfo {
+            id: name.clone(),
+            name,
+            host: "default".to_string(),
+            is_default,
+        });
+    }
+    if include_asio {
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        append_asio_devices(&mut out);
     }
     Ok(out)
 }
 
+/// Append ASIO-host input devices (x64 Windows). Best-effort: a missing or flaky
+/// ASIO driver must never break the default-host list, so errors are swallowed.
+/// cpal loads each driver to enumerate it, so drivers for absent hardware (e.g.
+/// the Helix / HX-Stomp interposers) simply don't appear.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn append_asio_devices(out: &mut Vec<DeviceInfo>) {
+    let Ok(host) = asio_host() else {
+        return;
+    };
+    let Ok(devices) = host.input_devices() else {
+        return;
+    };
+    for device in devices {
+        let name = device.to_string();
+        out.push(DeviceInfo {
+            id: format!("{ASIO_ID_PREFIX}{name}"),
+            name,
+            host: "asio".to_string(),
+            is_default: false,
+        });
+    }
+}
+
 pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
     let device = find_device(&name)?;
-    let dev_name = device
-        .name()
-        .unwrap_or_else(|_| "the selected device".into());
+    let dev_name = device.to_string();
     let default = device
         .default_input_config()
         .map_err(|e| explain_default_config_error(&dev_name, e))?;
     let channels = default.channels();
-    let default_sample_rate = default.sample_rate().0;
+    let default_sample_rate = default.sample_rate();
 
     let mut rates = BTreeSet::new();
     rates.insert(default_sample_rate);
@@ -482,8 +554,8 @@ pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
             if range.channels() != channels || range.sample_format() != default.sample_format() {
                 continue;
             }
-            let min = range.min_sample_rate().0;
-            let max = range.max_sample_rate().0;
+            let min = range.min_sample_rate();
+            let max = range.max_sample_rate();
             for &cand in CANDIDATE_RATES.iter() {
                 if cand >= min && cand <= max {
                     rates.insert(cand);
@@ -503,6 +575,12 @@ pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
 /// needs to drain and analyze it.
 struct BuiltStream {
     stream: cpal::Stream,
+    /// ASIO only: a silent output stream opened on the same device. Line 6 (and
+    /// other) ASIO drivers won't run an input-only `ASIOCreateBuffers` — no
+    /// callbacks fire and disposing the stream access-violates — but creating
+    /// input and output buffers together works. Kept alive and played/stopped
+    /// alongside the input stream. `None` on every non-ASIO path.
+    output_stream: Option<cpal::Stream>,
     consumer: ringbuf::HeapCons<f32>,
     /// Samples dropped on ring overrun, tallied lock-free by the realtime
     /// callback and logged off the realtime thread by the engine.
@@ -513,6 +591,67 @@ struct BuiltStream {
     device_channels: usize,
 }
 
+/// Whether a device id targets the ASIO host.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn is_asio_id(id: &Option<String>) -> bool {
+    id.as_deref().is_some_and(|s| s.starts_with(ASIO_ID_PREFIX))
+}
+
+/// Build a silent output stream on an ASIO `device` (see
+/// `BuiltStream::output_stream` for why it's needed). The realtime output
+/// callback only fills its buffer with silence — no allocation or locking.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn build_silent_output(
+    device: &cpal::Device,
+    dev_name: &str,
+    rate: u32,
+) -> Result<cpal::Stream, String> {
+    let default = device
+        .default_output_config()
+        .map_err(|e| explain_default_config_error(dev_name, e))?;
+    let config = cpal::StreamConfig {
+        channels: default.channels(),
+        sample_rate: rate,
+        buffer_size: cpal::BufferSize::Default,
+    };
+    let on_error = |err: cpal::Error| eprintln!("asio output stream error: {err}");
+    let stream = match default.sample_format() {
+        cpal::SampleFormat::I24 => device.build_output_stream(
+            config,
+            |data: &mut [cpal::I24], _: &cpal::OutputCallbackInfo| {
+                data.fill(cpal::I24::new(0).unwrap_or_default());
+            },
+            on_error,
+            None,
+        ),
+        cpal::SampleFormat::F32 => device.build_output_stream(
+            config,
+            |data: &mut [f32], _: &cpal::OutputCallbackInfo| data.fill(0.0),
+            on_error,
+            None,
+        ),
+        cpal::SampleFormat::I32 => device.build_output_stream(
+            config,
+            |data: &mut [i32], _: &cpal::OutputCallbackInfo| data.fill(0),
+            on_error,
+            None,
+        ),
+        cpal::SampleFormat::I16 => device.build_output_stream(
+            config,
+            |data: &mut [i16], _: &cpal::OutputCallbackInfo| data.fill(0),
+            on_error,
+            None,
+        ),
+        other => {
+            return Err(format!(
+                "“{dev_name}” uses an ASIO output format MeterMaid can’t drive ({other:?})."
+            ))
+        }
+    }
+    .map_err(|e| explain_build_error(dev_name, e))?;
+    Ok(stream)
+}
+
 fn build_stream(
     app: &AppHandle,
     device_name: Option<String>,
@@ -520,9 +659,7 @@ fn build_stream(
     sel: Vec<u32>,
 ) -> Result<BuiltStream, String> {
     let device = find_device(&device_name)?;
-    let dev_name = device
-        .name()
-        .unwrap_or_else(|_| "the selected device".into());
+    let dev_name = device.to_string();
 
     // Debug-only: force a representative capture failure so the error UI can be
     // exercised without unplugging hardware or revoking permissions. Run the dev
@@ -532,11 +669,10 @@ fn build_stream(
     if std::env::var_os("METERMAID_SIMULATE_ERROR").is_some() {
         return Err(explain_build_error(
             &dev_name,
-            cpal::BuildStreamError::BackendSpecific {
-                err: cpal::BackendSpecificError {
-                    description: "simulated failure (METERMAID_SIMULATE_ERROR)".into(),
-                },
-            },
+            cpal::Error::with_message(
+                cpal::ErrorKind::BackendError,
+                "simulated failure (METERMAID_SIMULATE_ERROR)",
+            ),
         ));
     }
     let default = device
@@ -544,7 +680,7 @@ fn build_stream(
         .map_err(|e| explain_default_config_error(&dev_name, e))?;
     let device_channels = default.channels();
     let sample_format = default.sample_format();
-    let rate = sample_rate.unwrap_or_else(|| default.sample_rate().0);
+    let rate = sample_rate.unwrap_or_else(|| default.sample_rate());
 
     let sel_idx: Vec<usize> = sel.iter().map(|&c| c as usize).collect();
     validate_selection(&sel_idx, device_channels as usize)?;
@@ -552,7 +688,7 @@ fn build_stream(
 
     let config = cpal::StreamConfig {
         channels: device_channels,
-        sample_rate: cpal::SampleRate(rate),
+        sample_rate: rate,
         buffer_size: cpal::BufferSize::Default,
     };
 
@@ -569,15 +705,27 @@ fn build_stream(
     // unplugged mid-capture). Forward it to the UI so the user sees a reason
     // rather than a silently frozen meter.
     let err_app = app.clone();
-    let on_error = move |err: cpal::StreamError| {
+    let on_error = move |err: cpal::Error| {
         eprintln!("audio stream error: {err}");
         let _ = err_app.emit("stream-error", err.to_string());
     };
 
+    // ASIO needs input and output buffers created together (see
+    // BuiltStream::output_stream). Build the silent output stream first so it's
+    // part of the same ASIOCreateBuffers as the input stream below.
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    let output_stream = if is_asio_id(&device_name) {
+        Some(build_silent_output(&device, &dev_name, rate)?)
+    } else {
+        None
+    };
+    #[cfg(not(all(windows, target_arch = "x86_64")))]
+    let output_stream: Option<cpal::Stream> = None;
+
     let cb_dropped = Arc::clone(&dropped);
     let stream = match sample_format {
         cpal::SampleFormat::F32 => device.build_input_stream(
-            &config,
+            config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 let pushed = producer.push_slice(data);
                 if pushed < data.len() {
@@ -593,7 +741,7 @@ fn build_stream(
             // ring's worth of samples).
             let mut scratch = vec![0.0f32; cap];
             device.build_input_stream(
-                &config,
+                config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
                     let n = data.len().min(scratch.len());
                     for (dst, &s) in scratch[..n].iter_mut().zip(data) {
@@ -611,11 +759,32 @@ fn build_stream(
         cpal::SampleFormat::U16 => {
             let mut scratch = vec![0.0f32; cap];
             device.build_input_stream(
-                &config,
+                config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
                     let n = data.len().min(scratch.len());
                     for (dst, &s) in scratch[..n].iter_mut().zip(data) {
                         *dst = (s as f32 - 32768.0) / 32768.0;
+                    }
+                    let pushed = producer.push_slice(&scratch[..n]);
+                    if pushed < data.len() {
+                        cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
+                    }
+                },
+                on_error,
+                None,
+            )
+        }
+        // 24-bit packed PCM — what pro-audio ASIO drivers (e.g. the Line 6
+        // Helix) report. cpal stores I24 in a 4-byte container; `from_sample`
+        // does the scaled conversion to f32.
+        cpal::SampleFormat::I24 => {
+            let mut scratch = vec![0.0f32; cap];
+            device.build_input_stream(
+                config,
+                move |data: &[cpal::I24], _: &cpal::InputCallbackInfo| {
+                    let n = data.len().min(scratch.len());
+                    for (dst, &s) in scratch[..n].iter_mut().zip(data) {
+                        *dst = f32::from_sample(s);
                     }
                     let pushed = producer.push_slice(&scratch[..n]);
                     if pushed < data.len() {
@@ -636,6 +805,7 @@ fn build_stream(
 
     Ok(BuiltStream {
         stream,
+        output_stream,
         consumer,
         dropped,
         info: StreamInfo {
@@ -690,10 +860,20 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
                             let _ = reply.send(Err(e));
                             continue;
                         }
+                        // Start the paired ASIO output stream (if any) before the
+                        // input, mirroring the order the driver tolerates.
+                        if let Some(out) = &built.output_stream {
+                            if let Err(e) = out.play() {
+                                analyzer.shutdown();
+                                let _ = reply.send(Err(explain_play_error(&dev_name, e)));
+                                continue;
+                            }
+                        }
                         match built.stream.play() {
                             Ok(()) => {
                                 active = Some(ActiveStream {
                                     stream: built.stream,
+                                    output_stream: built.output_stream,
                                     consumer: built.consumer,
                                     dropped: built.dropped,
                                 });
@@ -743,9 +923,15 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
 /// An active capture: the cpal stream (kept alive to keep the device running),
 /// its SPSC consumer, and the lock-free dropped-sample counter.
 struct ActiveStream {
-    /// Held only for its `Drop`: dropping the stream stops the device.
+    /// Held only for its `Drop`: dropping the stream stops the device. The input
+    /// stream is dropped before the output stream (field order) to match the
+    /// teardown order ASIO tolerates.
     #[allow(dead_code)]
     stream: cpal::Stream,
+    /// ASIO only: the paired silent output stream (see `BuiltStream`). Held for
+    /// its `Drop`; `None` on non-ASIO paths.
+    #[allow(dead_code)]
+    output_stream: Option<cpal::Stream>,
     consumer: ringbuf::HeapCons<f32>,
     dropped: Arc<AtomicU64>,
 }
@@ -754,6 +940,14 @@ struct ActiveStream {
 mod tests {
     use super::*;
     use std::f32::consts::PI;
+
+    // ASIO drivers are single-instance: two tests loading the driver at once
+    // (as `cargo test -- --include-ignored` does, since it runs ignored tests
+    // in parallel) collide and one sees zero channels. Serialize the ASIO
+    // hardware tests on this lock. `into_inner` recovers from a poisoned lock
+    // so one failing ASIO test doesn't cascade into the other.
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    static ASIO_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// Build a configured analyzer for the common mono-device case.
     fn analyzer(sample_rate: u32, device_channels: usize, sel: Vec<usize>) -> Analyzer {
@@ -799,24 +993,32 @@ mod tests {
     #[test]
     fn build_error_messages_name_the_device_and_are_actionable() {
         // A vanished device tells the user to reconnect or pick another.
-        let msg = explain_build_error("Scarlett 2i2", cpal::BuildStreamError::DeviceNotAvailable);
+        let msg = explain_build_error(
+            "Scarlett 2i2",
+            cpal::Error::new(cpal::ErrorKind::DeviceNotAvailable),
+        );
         assert!(msg.contains("Scarlett 2i2"), "got: {msg}");
         assert!(msg.contains("no longer available"), "got: {msg}");
 
         // An unsupported config points at the sample rate.
         let msg = explain_build_error(
             "Built-in Mic",
-            cpal::BuildStreamError::StreamConfigNotSupported,
+            cpal::Error::new(cpal::ErrorKind::UnsupportedConfig),
         );
         assert!(msg.contains("sample rate"), "got: {msg}");
 
-        // Backend-specific failures (where denied mic permission lands) carry
-        // the permission hint.
-        let backend = cpal::BuildStreamError::BackendSpecific {
-            err: cpal::BackendSpecificError {
-                description: "kAudioUnitErr_NoConnection".into(),
-            },
-        };
+        // A device held exclusively (ASIO) names the conflict.
+        let msg = explain_build_error("Helix", cpal::Error::new(cpal::ErrorKind::DeviceBusy));
+        assert!(msg.contains("Helix"), "got: {msg}");
+        assert!(
+            msg.to_lowercase().contains("another application"),
+            "got: {msg}"
+        );
+
+        // Opaque backend failures (where denied mic permission lands) carry the
+        // permission hint.
+        let backend =
+            cpal::Error::with_message(cpal::ErrorKind::BackendError, "kAudioUnitErr_NoConnection");
         let msg = explain_build_error("Built-in Mic", backend);
         assert!(msg.contains("Built-in Mic"), "got: {msg}");
         assert!(msg.to_lowercase().contains("microphone"), "got: {msg}");
@@ -824,11 +1026,7 @@ mod tests {
 
     #[test]
     fn play_error_carries_permission_hint() {
-        let backend = cpal::PlayStreamError::BackendSpecific {
-            err: cpal::BackendSpecificError {
-                description: "denied".into(),
-            },
-        };
+        let backend = cpal::Error::with_message(cpal::ErrorKind::BackendError, "denied");
         let msg = explain_play_error("Mic", backend);
         assert!(msg.contains("Mic"), "got: {msg}");
         assert!(msg.to_lowercase().contains("microphone"), "got: {msg}");
@@ -1081,5 +1279,157 @@ mod tests {
             (ours - ff).abs() < 1.0,
             "integrated LUFS disagrees with ffmpeg: ours={ours}, ffmpeg={ff}"
         );
+    }
+
+    // --- ASIO enumeration spike (Phase 1, manual) ---------------------------
+    //
+    // Validates the premise behind Windows multichannel support: that a
+    // multichannel interface (e.g. the Line 6 Helix) reports its full native
+    // channel count through the ASIO host, where WASAPI shared mode reports
+    // only the endpoint default (often mono). Requires the `asio` cpal feature
+    // (x64 Windows), the ASIO SDK build chain, and the device plugged in and
+    // not held by another app. Ignored by default; run with:
+    //   cargo test asio_enumerates_devices -- --ignored --nocapture
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    #[ignore]
+    fn asio_enumerates_devices() {
+        use cpal::HostId;
+
+        let _asio = ASIO_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let host = cpal::host_from_id(HostId::Asio).expect(
+            "ASIO host unavailable — is the `asio` feature enabled and a driver installed?",
+        );
+
+        // Iterate ALL devices (not input_devices(), which silently drops any
+        // driver whose config query fails) so a failed driver load is visible
+        // rather than vanishing. Two of the registered drivers are interposers
+        // for hardware that may be absent — we expect those to error.
+        let devices: Vec<_> = host.devices().expect("enumerate ASIO devices").collect();
+
+        eprintln!("ASIO devices (all): {}", devices.len());
+        let mut max_channels = 0u16;
+        for device in &devices {
+            let name = device.to_string();
+            match device.default_input_config() {
+                Ok(cfg) => {
+                    max_channels = max_channels.max(cfg.channels());
+                    eprintln!(
+                        "  [ok]  {name}: {} in-ch @ {} Hz ({:?})",
+                        cfg.channels(),
+                        cfg.sample_rate(),
+                        cfg.sample_format()
+                    );
+                }
+                Err(e) => eprintln!("  [err] {name}: default_input_config: {e}"),
+            }
+        }
+
+        assert!(!devices.is_empty(), "no ASIO drivers registered/visible");
+        assert!(
+            max_channels > 1,
+            "no ASIO driver yielded a multichannel input config (max was {max_channels}); \
+see per-device errors above"
+        );
+    }
+
+    // Exercises the Phase 2 merged enumeration: `list_input_devices` should
+    // surface ASIO devices alongside the default host, tagged with host "asio"
+    // and an `asio:`-prefixed id that round-trips back through `find_device`.
+    // Requires an ASIO device plugged in. Run with:
+    //   cargo test list_devices_includes_asio -- --ignored --nocapture
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    #[ignore]
+    fn list_devices_includes_asio() {
+        let _asio = ASIO_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let devices = list_input_devices(true).expect("list devices");
+        for d in &devices {
+            eprintln!("  host={} id={:?} name={:?}", d.host, d.id, d.name);
+        }
+        let asio: Vec<_> = devices.iter().filter(|d| d.host == "asio").collect();
+        assert!(
+            !asio.is_empty(),
+            "no ASIO devices surfaced by list_input_devices"
+        );
+        for d in asio {
+            assert!(
+                d.id.starts_with(ASIO_ID_PREFIX),
+                "ASIO device id should be prefixed: {:?}",
+                d.id
+            );
+            // The id must resolve back to a real device through find_device.
+            find_device(&Some(d.id.clone()))
+                .unwrap_or_else(|e| panic!("find_device failed for {:?}: {e}", d.id));
+        }
+    }
+
+    // Regression test for the ASIO input-only failure: this driver delivers no
+    // callbacks and access-violates on dispose unless an output stream is created
+    // alongside the input (one ASIOCreateBuffers for both directions) — which is
+    // exactly what build_stream does for ASIO devices. Verifies the input+output
+    // pairing actually captures and tears down cleanly. Requires the device. Run:
+    //   cargo test asio_input_output_captures -- --ignored --nocapture
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    #[ignore]
+    fn asio_input_output_captures() {
+        let _asio = ASIO_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let host = asio_host().expect("asio host");
+        let device = host
+            .input_devices()
+            .expect("input devices")
+            .next()
+            .expect("an asio input device");
+        let in_default = device.default_input_config().expect("default input config");
+        let out_default = device
+            .default_output_config()
+            .expect("default output config");
+        let rate = in_default.sample_rate();
+        let in_config = cpal::StreamConfig {
+            channels: in_default.channels(),
+            sample_rate: rate,
+            buffer_size: cpal::BufferSize::Default,
+        };
+        let out_config = cpal::StreamConfig {
+            channels: out_default.channels(),
+            sample_rate: rate,
+            buffer_size: cpal::BufferSize::Default,
+        };
+
+        // Silent output stream first, then the input — same order build_stream uses.
+        let out_stream = device
+            .build_output_stream(
+                out_config,
+                |data: &mut [cpal::I24], _: &cpal::OutputCallbackInfo| {
+                    data.fill(cpal::I24::new(0).unwrap_or_default());
+                },
+                |e| eprintln!("output stream error: {e}"),
+                None,
+            )
+            .expect("build_output_stream");
+
+        let count = Arc::new(AtomicU64::new(0));
+        let cb_count = Arc::clone(&count);
+        let in_stream = device
+            .build_input_stream(
+                in_config,
+                move |data: &[cpal::I24], _: &cpal::InputCallbackInfo| {
+                    cb_count.fetch_add(data.len() as u64, Ordering::Relaxed);
+                },
+                |e| eprintln!("input stream error: {e}"),
+                None,
+            )
+            .expect("build_input_stream");
+
+        out_stream.play().expect("play output");
+        in_stream.play().expect("play input");
+        std::thread::sleep(Duration::from_millis(500));
+        drop(in_stream);
+        drop(out_stream);
+
+        let n = count.load(Ordering::Relaxed);
+        eprintln!("captured {n} samples across callbacks");
+        assert!(n > 0, "ASIO input+output stream produced no callbacks");
     }
 }

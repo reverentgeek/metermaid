@@ -11,8 +11,8 @@ struct AppState {
 }
 
 #[tauri::command]
-fn list_devices() -> Result<Vec<DeviceInfo>, String> {
-    audio::list_input_devices()
+fn list_devices(include_asio: bool) -> Result<Vec<DeviceInfo>, String> {
+    audio::list_input_devices(include_asio)
 }
 
 #[tauri::command]
@@ -53,6 +53,14 @@ fn stop_capture(state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 fn reset_integrated(state: State<AppState>) -> Result<(), String> {
     state.tx.send(Command::Reset).map_err(|e| e.to_string())
+}
+
+/// Whether this build links the ASIO SDK (x64 Windows only). The About dialog
+/// uses it to show the ASIO trademark attribution and the GPLv3 notice that
+/// applies to this one binary.
+#[tauri::command]
+fn asio_build() -> bool {
+    cfg!(all(windows, target_arch = "x86_64"))
 }
 
 /// After `tauri-plugin-window-state` restores the saved geometry, make sure the
@@ -241,7 +249,8 @@ pub fn run() {
             get_device_config,
             start_capture,
             stop_capture,
-            reset_integrated
+            reset_integrated,
+            asio_build
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

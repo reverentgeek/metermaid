@@ -15,7 +15,12 @@ import { load, type Store } from "@tauri-apps/plugin-store";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
 interface DeviceInfo {
+	// Host-qualified identity: the <option> value and the persisted settings key.
+	// ASIO devices are prefixed (`asio:`); default-host devices use the bare name.
+	id: string;
 	name: string;
+	// "default" or "asio" — drives the disambiguating label.
+	host: string;
 	isDefault: boolean;
 }
 
@@ -94,6 +99,7 @@ const updateDismiss = $<HTMLButtonElement>("updateDismiss");
 const aboutModal = $<HTMLDivElement>("aboutModal");
 const aboutClose = $<HTMLButtonElement>("aboutClose");
 const aboutVersion = $<HTMLSpanElement>("aboutVersion");
+const aboutAsio = $<HTMLParagraphElement>("aboutAsio");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
 
@@ -291,9 +297,11 @@ function configControlsEnabled(enabled: boolean) {
 	rateSelect.disabled = !enabled;
 }
 
-// Signature of the most recently rendered device set, so the hotplug poller can
-// skip rebuilding the dropdown when nothing has changed.
-let lastDeviceSig = "";
+// Signature of just the default-host (WASAPI/CoreAudio/ALSA) devices, so the
+// hotplug poller can skip rebuilding when nothing has changed. Enumerating ASIO
+// loads its driver, so we watch only the default host here and do a full
+// (ASIO-inclusive) refresh when that topology actually changes.
+let lastWasapiSig = "";
 
 // Whether the toolbar is currently showing a device-availability notice (e.g.
 // "input device disconnected"). Tracked so we can clear it back to idle once the
@@ -314,10 +322,18 @@ function clearDeviceNotice() {
 }
 
 function deviceSig(devices: DeviceInfo[]): string {
-	return devices.map((d) => `${d.isDefault ? "*" : ""}${d.name}`).join("\n");
+	return devices.map((d) => `${d.isDefault ? "*" : ""}${d.id}`).join("\n");
 }
 
-// (Re)render the device <option>s. If `keep` names a device that's still
+// Display label for a device option. ASIO devices are tagged so they're
+// distinguishable from the same hardware's WASAPI endpoint; the default device
+// is annotated too.
+function deviceLabel(d: DeviceInfo): string {
+	if (d.host === "asio") return `${d.name} (ASIO)`;
+	return d.isDefault ? `${d.name} (default)` : d.name;
+}
+
+// (Re)render the device <option>s. If `keep` is the id of a device that's still
 // present it stays selected; otherwise the system default (or first device)
 // is selected. Shared by the initial load and the hotplug poller.
 function renderDeviceOptions(devices: DeviceInfo[], keep: string) {
@@ -331,30 +347,32 @@ function renderDeviceOptions(devices: DeviceInfo[], keep: string) {
 	}
 	for (const d of devices) {
 		const opt = document.createElement("option");
-		opt.value = d.name;
-		opt.textContent = d.isDefault ? `${d.name} (default)` : d.name;
+		opt.value = d.id;
+		opt.textContent = deviceLabel(d);
 		deviceSelect.append(opt);
 	}
-	if (keep && devices.some((d) => d.name === keep)) {
+	if (keep && devices.some((d) => d.id === keep)) {
 		deviceSelect.value = keep;
 	} else {
 		const def = devices.find((d) => d.isDefault) ?? devices[0];
-		deviceSelect.value = def.name;
+		deviceSelect.value = def.id;
 	}
 }
 
 async function loadDevices() {
 	try {
-		const devices = await invoke<DeviceInfo[]>("list_devices");
+		const devices = await invoke<DeviceInfo[]>("list_devices", {
+			includeAsio: true,
+		});
 		renderDeviceOptions(devices, "");
-		lastDeviceSig = deviceSig(devices);
+		lastWasapiSig = deviceSig(devices.filter((d) => d.host !== "asio"));
 		if (devices.length === 0) return;
 		// Restore the saved device if it's still present; otherwise leave the
 		// system default selected and surface a notice. When the saved device is
 		// gone we also drop the saved channels/rate so the default device gets its
 		// own sensible defaults rather than a mismatched selection.
 		if (pendingDevice) {
-			if (devices.some((d) => d.name === pendingDevice)) {
+			if (devices.some((d) => d.id === pendingDevice)) {
 				deviceSelect.value = pendingDevice;
 			} else {
 				savedDeviceAvailable = false;
@@ -381,15 +399,26 @@ const DEVICE_POLL_MS = 2000;
 // by the stream-error path.
 async function pollDevices() {
 	if (running || restoring || deviceSelect.disabled) return;
-	let devices: DeviceInfo[];
+	// Cheap pass: only the default host (no ASIO driver loading). If the
+	// default-host set is unchanged, nothing to do — ASIO devices are stable
+	// between these ticks and don't need re-enumerating.
+	let wasapi: DeviceInfo[];
 	try {
-		devices = await invoke<DeviceInfo[]>("list_devices");
+		wasapi = await invoke<DeviceInfo[]>("list_devices", { includeAsio: false });
 	} catch {
 		return; // Transient failure — try again on the next tick.
 	}
-	const sig = deviceSig(devices);
-	if (sig === lastDeviceSig) return;
-	lastDeviceSig = sig;
+	const wasapiSig = deviceSig(wasapi);
+	if (wasapiSig === lastWasapiSig) return;
+	lastWasapiSig = wasapiSig;
+	// Topology changed (e.g. an interface was plugged in) — now do the full,
+	// ASIO-inclusive enumeration to rebuild the dropdown.
+	let devices: DeviceInfo[];
+	try {
+		devices = await invoke<DeviceInfo[]>("list_devices", { includeAsio: true });
+	} catch {
+		return;
+	}
 	const prev = deviceSelect.value;
 	renderDeviceOptions(devices, prev);
 	if (deviceSelect.value !== prev) {
@@ -850,6 +879,13 @@ window.addEventListener("DOMContentLoaded", async () => {
 	void getVersion().then((v) => {
 		aboutVersion.textContent = v;
 	});
+	// Surface the ASIO trademark + GPLv3 notice only on the build that links ASIO
+	// (x64 Windows); that binary is GPLv3 while the rest stay MIT.
+	void invoke<boolean>("asio_build")
+		.then((on) => {
+			if (on) aboutAsio.hidden = false;
+		})
+		.catch(() => {});
 	aboutModal.addEventListener("click", (e) => {
 		const target = e.target as HTMLElement;
 		const link = target.closest<HTMLAnchorElement>(".about-link");
