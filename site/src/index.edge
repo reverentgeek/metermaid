@@ -271,6 +271,69 @@ description: MeterMaid is a free, open-source desktop loudness meter. Measure LU
 </section>
 
 
+{{-- ═══ GETTING STARTED ═══ --}}
+<section id="getting-started" tabindex="-1" aria-label="Getting started" class="relative bg-ink-950 border-t border-ink-800">
+	<div class="relative z-10 max-w-6xl mx-auto px-6 py-24">
+		<div class="max-w-2xl mb-14">
+			<p class="font-display text-green-400 text-sm font-600 tracking-[0.2em] uppercase mb-4">Getting started</p>
+			<h2 class="font-display text-3xl sm:text-4xl font-700 tracking-tight text-ink-100 mb-5">
+				From download to dialed-in tone</h2>
+			<p class="text-ink-200 leading-relaxed">
+				You'll be reading real loudness in under a minute. No account, no config files, and no manual to read.
+			</p>
+		</div>
+
+		<ol class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+			<li class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
+				<span class="flex items-center justify-center w-10 h-10 rounded-lg bg-ink-800 font-display text-xl font-700 text-green-400 mb-5">1</span>
+				<h3 class="font-display text-lg font-600 text-ink-100 mb-2">Install and open</h3>
+				<p class="text-ink-300 text-sm leading-relaxed">Grab the build for your platform above and launch it. macOS builds are notarized, so they open without warnings.</p>
+			</li>
+			<li class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
+				<span class="flex items-center justify-center w-10 h-10 rounded-lg bg-ink-800 font-display text-xl font-700 text-green-400 mb-5">2</span>
+				<h3 class="font-display text-lg font-600 text-ink-100 mb-2">Pick your input</h3>
+				<p class="text-ink-300 text-sm leading-relaxed">Connect your interface or modeler over USB, or route playback through a virtual device like BlackHole, then choose it in the device dropdown.</p>
+			</li>
+			<li class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
+				<span class="flex items-center justify-center w-10 h-10 rounded-lg bg-ink-800 font-display text-xl font-700 text-green-400 mb-5">3</span>
+				<h3 class="font-display text-lg font-600 text-ink-100 mb-2">Press Start</h3>
+				<p class="text-ink-300 text-sm leading-relaxed">Click Start and allow microphone access when asked. The readouts and the live spectrum come alive right away.</p>
+			</li>
+			<li class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
+				<span class="flex items-center justify-center w-10 h-10 rounded-lg bg-ink-800 font-display text-xl font-700 text-green-400 mb-5">4</span>
+				<h3 class="font-display text-lg font-600 text-ink-100 mb-2">Match your loudness</h3>
+				<p class="text-ink-300 text-sm leading-relaxed">Set a Target, play a few seconds, and read the Apply value. To level a patch, make a change, click Reset, and play again until Apply settles.</p>
+			</li>
+		</ol>
+	</div>
+</section>
+
+
+{{-- ═══ UPDATES ═══ --}}
+<section id="updates" tabindex="-1" aria-label="Updates" class="relative bg-ink-900 border-t border-ink-800">
+	<div class="relative z-10 max-w-4xl mx-auto px-6 py-24 text-center">
+		<p class="font-display text-green-400 text-sm font-600 tracking-[0.2em] uppercase mb-4">Updates</p>
+		<h2 class="font-display text-3xl sm:text-4xl font-700 tracking-tight text-ink-100 mb-5">
+			Always on the latest version</h2>
+		<p class="max-w-2xl mx-auto text-ink-200 leading-relaxed mb-4">
+			MeterMaid checks for a new version each time it launches and shows a banner when one is ready. One click
+			installs it and relaunches, so you stay current without hunting for a download.
+		</p>
+		<p class="text-ink-300 text-sm mb-10">The current release is <span class="font-mono text-ink-100">v{{ release.version }}</span>.</p>
+		<div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+			<a href="{{ release.htmlUrl }}"
+				class="inline-flex items-center gap-2 bg-green-400 hover:bg-green-500 text-ink-950 font-display font-600 text-lg px-8 py-4 rounded-lg transition-colors duration-200" rel="noopener">
+				Read the release notes
+			</a>
+			<a href="{{ site.repo }}/releases"
+				class="inline-flex items-center gap-2 border border-ink-600 text-ink-100 font-display font-500 text-lg px-8 py-4 rounded-lg hover:border-green-400 hover:text-green-400 transition-colors duration-200" rel="noopener">
+				See all releases
+			</a>
+		</div>
+	</div>
+</section>
+
+
 {{-- ═══ FEEDBACK ═══ --}}
 <section id="feedback" tabindex="-1" aria-label="Feedback" class="relative bg-ink-950 border-t border-ink-800">
 	<div class="relative z-10 max-w-4xl mx-auto px-6 py-24 text-center">
