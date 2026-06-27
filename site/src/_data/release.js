@@ -3,7 +3,7 @@
  *
  * Runs once per Eleventy build. It asks the GitHub Releases API for the latest
  * *published* release and derives the version and per-platform download URLs
- * from the actual uploaded assets — so the site's version badge and download
+ * from the actual uploaded assets, so the site's version badge and download
  * buttons update automatically every time the site is rebuilt (e.g. when the
  * `release: published` deploy hook fires; see .github/workflows/site-deploy.yml).
  *
