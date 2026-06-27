@@ -216,3 +216,47 @@ test.describe( "Content", () => {
 		}
 	} );
 } );
+
+// ─── Updates / changelog page ──────────────────────────────────────────────────
+
+test.describe( "Updates page", () => {
+	test( "loads with exactly one h1", async ( { page } ) => {
+		await page.goto( "/updates/" );
+		await expect( page.locator( "h1" ) ).toHaveCount( 1 );
+	} );
+
+	test( "renders multiple release versions from the changelog", async ( { page } ) => {
+		await page.goto( "/updates/" );
+		const versions = page.locator( "article h2" );
+		// The changelog has many releases; guard against a parser/render regression
+		// that would drop them to zero or one.
+		expect( await versions.count() ).toBeGreaterThan( 3 );
+		await expect( versions.filter( { hasText: "v0.1.0" } ) ).toHaveCount( 1 );
+	} );
+
+	test( "links to the full release notes on GitHub", async ( { page } ) => {
+		await page.goto( "/updates/" );
+		await expect(
+			page.locator( 'a[href$="/releases"]' ).first()
+		).toBeVisible();
+	} );
+
+	test( "heading order is logical (h1 → h2, no skipped levels)", async ( { page } ) => {
+		await page.goto( "/updates/" );
+		const headings = await page.evaluate( () =>
+			[ ...document.querySelectorAll( "h1,h2,h3,h4,h5,h6" ) ].map( h => parseInt( h.tagName[ 1 ] ) )
+		);
+		let prev = 0;
+		for ( const level of headings ) {
+			expect( level - prev ).toBeLessThanOrEqual( 1 );
+			prev = level;
+		}
+	} );
+} );
+
+test.describe( "Homepage updates teaser", () => {
+	test( "links to the full updates page", async ( { page } ) => {
+		await page.goto( "/" );
+		await expect( page.locator( '#updates a[href="/updates/"]' ) ).toHaveCount( 1 );
+	} );
+} );
