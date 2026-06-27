@@ -6,7 +6,37 @@ on:
   pull_request:
 
 jobs:
+  # Detect which part of the monorepo changed so we can skip the expensive app
+  # matrix on website-only changes (and skip the site build on app-only changes).
+  # The app/audit jobs below are gated on `app`; when a PR touches only site/,
+  # they're SKIPPED — and GitHub counts a skipped required check as passing, so
+  # the required contexts (build-and-test (macos/ubuntu-latest), audit) don't
+  # block a website-only PR. A workflow-level paths filter would instead leave
+  # those checks pending forever, blocking the merge — hence this job-level gate.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      site: ${{ steps.filter.outputs.site }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            app:
+              - '**'
+              - '!site/**'
+              - '!netlify.toml'
+              - '!.github/workflows/site-deploy.yml'
+            site:
+              - 'site/**'
+              - 'netlify.toml'
+              - '.github/workflows/site-deploy.yml'
+
   build-and-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.app == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -82,6 +112,8 @@ jobs:
         working-directory: src-tauri
 
   audit:
+    needs: changes
+    if: ${{ needs.changes.outputs.app == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -97,3 +129,33 @@ jobs:
       - name: Cargo audit
         run: cargo audit
         working-directory: src-tauri
+
+  # Website build + Playwright suite. Runs only when site/ changed, in the
+  # Node version the site actually deploys on (Netlify NODE_VERSION in
+  # netlify.toml).
+  build-site:
+    needs: changes
+    if: ${{ needs.changes.outputs.site == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build and test
+        run: pnpm test

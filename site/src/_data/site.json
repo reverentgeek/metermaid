@@ -1,0 +1,10 @@
+{
+	"name": "MeterMaid",
+	"tagline": "A real-time LUFS loudness meter for your desktop.",
+	"description": "MeterMaid is a free, open-source desktop loudness meter. Measure LUFS to the EBU R128 / ITU-R BS.1770 standard, watch a live frequency spectrum, and level guitar amp and effect patches by ear-honest, matched loudness. macOS, Windows, and Linux.",
+	"url": "https://getmetermaid.com",
+	"repo": "https://github.com/reverentgeek/metermaid",
+	"blogPost": "https://reverentgeek.com/leveling-guitar-patches-with-tauri/",
+	"author": "David Neal",
+	"authorUrl": "https://reverentgeek.com/"
+}

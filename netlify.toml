@@ -1,0 +1,14 @@
+# Netlify build config for the MeterMaid website, which lives in site/.
+# `base` makes Netlify install + build from that subdirectory; `publish` is
+# the output dir relative to the repo root. App (src-tauri/) changes still
+# trigger a (fast, static) rebuild — kept simple on purpose so the
+# release-published deploy hook is never skipped by an ignore command.
+[build]
+  base = "site"
+  command = "pnpm run build"
+  publish = "site/_site"
+
+[build.environment]
+  # Netlify preinstalls Node 22 but installs any nvm version on request; 24 is
+  # the current LTS and matches the app's CI (.github/workflows/ci.yml).
+  NODE_VERSION = "24"

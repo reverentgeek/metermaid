@@ -1,0 +1,36 @@
+name: Deploy website
+
+# Rebuilds and deploys the MeterMaid website (site/) whenever a release is
+# published, so its version badge and download links refresh to the new
+# release. The site's Eleventy build re-fetches the latest release from the
+# GitHub API at build time (see site/src/_data/release.js); this workflow just
+# pokes Netlify to run that build at the moment "latest" changes.
+#
+# Requires a repository secret NETLIFY_BUILD_HOOK — create a build hook in
+# Netlify (Site configuration → Build & deploy → Build hooks) and paste its URL.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# Avoid stacking redundant deploys if several releases publish in quick succession.
+concurrency:
+  group: site-deploy
+  cancel-in-progress: false
+
+jobs:
+  trigger-netlify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Netlify build
+        env:
+          NETLIFY_BUILD_HOOK: ${{ secrets.NETLIFY_BUILD_HOOK }}
+        run: |
+          if [ -z "${NETLIFY_BUILD_HOOK}" ]; then
+            echo "::error::NETLIFY_BUILD_HOOK secret is not set; cannot trigger a site deploy."
+            exit 1
+          fi
+          echo "Triggering Netlify build for ${GITHUB_REF_NAME:-manual run}..."
+          curl --fail --silent --show-error -X POST -d '{}' "${NETLIFY_BUILD_HOOK}"
+          echo "Netlify build triggered."

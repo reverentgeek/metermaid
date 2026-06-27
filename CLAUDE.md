@@ -26,7 +26,7 @@ cargo test ebur128_matches_ffmpeg -- --ignored --nocapture   # optional ffmpeg c
 
 The audio tests in `audio.rs` (`#[cfg(test)] mod tests`) drive the `Analyzer` directly with synthesized frames — **no audio device required**. New analysis behavior should come with one of these golden-signal tests.
 
-CI (`.github/workflows/ci.yml`) runs `pnpm build`, `cargo fmt --check`, clippy, and `cargo test` on macOS + Linux, plus a `cargo audit`. The pre-commit hook lints only *staged* `.rs`/`.ts`/`.md`; bypass with `git commit --no-verify`, skip just clippy with `SKIP_CLIPPY=1 git commit`.
+CI (`.github/workflows/ci.yml`) runs `pnpm build`, `cargo fmt --check`, clippy, and `cargo test` on macOS + Linux (+ Windows for the ASIO path), plus a `cargo audit`. It is **path-aware**: a `changes` job (`dorny/paths-filter`) classifies each push/PR as touching the app (anything outside the site's files) and/or the site (`site/**` plus the site-owned root files `netlify.toml` and `.github/workflows/site-deploy.yml`). The app matrix + `audit` run only on app changes; a separate `build-site` job (Playwright suite on Node 24) runs only on site changes. So a website-only PR skips the whole Rust matrix and an app-only PR skips the site build. The required checks (`build-and-test (macos-latest)`, `build-and-test (ubuntu-latest)`, `audit`) are *skipped* — not absent — on site-only PRs, which GitHub counts as passing, so the PR stays mergeable. (Don't switch this to a workflow-level `paths` filter: that leaves required checks pending forever and blocks the merge.) `build-site` is itself a required check on the `main` ruleset, so it gates site PRs; on app-only PRs it's skipped, which counts as passing. The pre-commit hook lints only *staged* `.rs`/`.ts`/`.md`; bypass with `git commit --no-verify`, skip just clippy with `SKIP_CLIPPY=1 git commit`.
 
 ## Architecture
 
@@ -96,6 +96,8 @@ To cut a release after the version PR is merged to `main`:
 
    (`gh release view --json` has no `isLatest` field — verify with `isDraft`/`publishedAt` instead.)
 
+   Publishing also fires the `Deploy website` workflow (`release: published`), which rebuilds [`site/`](site) so the website's version badge and download links pick up this release automatically — see "Website" below. Nothing else to do for the site.
+
 ### Release notes / download table
 
 The auto-generated body has no download table — add one matching prior releases (see `gh release view v0.1.1 --json body`). Set it with `gh release edit v0.2.0 --notes-file <file>`. The table links are built from the asset names, which follow these patterns under `https://github.com/reverentgeek/metermaid/releases/download/v<ver>/`:
@@ -107,6 +109,14 @@ The auto-generated body has no download table — add one matching prior release
 Conclude the notes with a What's Changed summary (from the changelog) and `**Full Changelog**: https://github.com/reverentgeek/metermaid/compare/v<prev>...v<ver>`.
 
 Signing secrets and the full signed-build env are documented in `README.md` ("Code signing & notarization", "Signing secrets"); Windows toolchain/cross-compile setup is in README "Platform support".
+
+## Website (`site/`)
+
+The marketing/landing site (<https://getmetermaid.com>) lives in [`site/`](site) as a monorepo alongside the app — an Eleventy + Edge.js + Tailwind v4 static site, separate from the Tauri toolchain. It is **self-contained**: its own `package.json`, lockfile, and `pnpm-workspace.yaml` (the last isolates it so `pnpm` from `site/` doesn't merge with the app's root workspace). Work on it from inside `site/` (`cd site && pnpm install && pnpm run dev`); see [`site/CLAUDE.md`](site/CLAUDE.md).
+
+- **No manual version bumps.** The site's version badge, the 6 download buttons, and its JSON-LD are derived from the GitHub Releases API at build time ([`site/src/_data/release.js`](site/src/_data/release.js)) — not hardcoded. A rebuild always reflects whatever is currently the latest published release (with a pinned offline fallback so builds never break).
+- **Deploy is release-driven.** Hosting is Netlify, configured from the repo-root [`netlify.toml`](netlify.toml) (`base = "site"`). Pushes to `main` deploy normally; on top of that, [`.github/workflows/site-deploy.yml`](.github/workflows/site-deploy.yml) pings a Netlify build hook on `release: published`, so cutting a release rebuilds the site at the moment "latest" changes. **This needs a `NETLIFY_BUILD_HOOK` repo secret** (create the hook in Netlify → Site configuration → Build & deploy → Build hooks).
+- If the app's release **asset names** ever change, update `ASSET_MAP` in `site/src/_data/release.js` to match (the same patterns listed under "Release notes / download table" above).
 
 ## Workflow conventions
 
