@@ -1,0 +1,212 @@
+@import "tailwindcss";
+@source "../../_site";
+
+@theme {
+	--font-display: "Space Grotesk", sans-serif;
+	--font-body: "Inter", sans-serif;
+	--font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+	/* Pulled directly from the MeterMaid app palette (src/styles.css) */
+	--color-ink-950: #0a0c10;
+	--color-ink-900: #0c0e13;
+	--color-ink-850: #141821;
+	--color-ink-800: #1b2030;
+	--color-ink-700: #262c3a;
+	--color-ink-600: #333a4b;
+	--color-ink-300: #8b93a7;
+	--color-ink-200: #b6bcca;
+	--color-ink-100: #e8ecf4;
+
+	--color-green-400: #54e08a;
+	--color-green-500: #2a9d8f;
+	--color-amber-400: #f2c14e;
+	--color-amber-500: #ffd24a;
+	--color-red-400: #ff5d5d;
+}
+
+:focus-visible {
+	outline: 2px solid var(--color-green-400);
+	outline-offset: 3px;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	line-height: 1.5;
+}
+
+.skip-link {
+	position: absolute;
+	left: 1rem;
+	top: 1rem;
+	z-index: 50;
+	padding: 0.75rem 1rem;
+	background: var(--color-green-400);
+	color: var(--color-ink-950);
+	font-family: var(--font-display);
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	transform: translateY(-160%);
+	transition: transform 0.2s ease;
+}
+
+.skip-link:focus-visible {
+	transform: translateY(0);
+}
+
+/* ── Brand meter gradient (matches the app logo / spectrum) ── */
+.text-gradient-meter {
+	background: linear-gradient(180deg, var(--color-red-400) 0%, var(--color-amber-400) 50%, var(--color-green-400) 100%);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+/* ── Animated spectrum backdrop ── */
+@keyframes bar-rise {
+	from {
+		transform: scaleY(0.05);
+		opacity: 0;
+	}
+	to {
+		transform: scaleY(1);
+		opacity: 1;
+	}
+}
+
+.spectrum-bar {
+	transform-box: fill-box;
+	transform-origin: bottom;
+	animation: bar-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes fade-up {
+	from {
+		opacity: 0;
+		transform: translateY(24px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes fade-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+.animate-fade-up {
+	opacity: 0;
+	animation: fade-up 0.7s ease-out forwards;
+}
+
+.animate-fade-in {
+	opacity: 0;
+	animation: fade-in 0.8s ease-out forwards;
+}
+
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-500 { animation-delay: 0.5s; }
+.delay-700 { animation-delay: 0.7s; }
+.delay-900 { animation-delay: 0.9s; }
+.delay-1100 { animation-delay: 1.1s; }
+
+/* ── Subtle grid texture overlay ── */
+.grid-overlay::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	opacity: 0.4;
+	background-image:
+		linear-gradient(to right, rgba(38, 44, 58, 0.35) 1px, transparent 1px),
+		linear-gradient(to bottom, rgba(38, 44, 58, 0.35) 1px, transparent 1px);
+	background-size: 48px 48px;
+	mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+	pointer-events: none;
+	z-index: 0;
+}
+
+/* ── Feature card ── */
+.feature-card {
+	position: relative;
+	transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.feature-card::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 3px;
+	height: 0;
+	background: var(--color-green-400);
+	transition: height 0.3s ease;
+}
+.feature-card:hover {
+	transform: translateY(-4px);
+	border-color: var(--color-ink-600);
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.feature-card:hover::before,
+.feature-card:focus-within::before {
+	height: 100%;
+}
+
+/* ── Download card ── */
+.download-card {
+	transition: transform 0.25s ease, border-color 0.25s ease;
+}
+.download-card:hover {
+	transform: translateY(-3px);
+	border-color: var(--color-green-500);
+}
+
+/* ── Primary button shimmer underline ── */
+.link-underline {
+	position: relative;
+}
+.link-underline::after {
+	content: "";
+	position: absolute;
+	bottom: -2px;
+	left: 0;
+	width: 0;
+	height: 2px;
+	background: var(--color-green-400);
+	transition: width 0.3s ease;
+}
+.link-underline:hover::after,
+.link-underline:focus-visible::after {
+	width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+
+	.animate-fade-up,
+	.animate-fade-in,
+	.spectrum-bar {
+		opacity: 1;
+		transform: none;
+		animation: none !important;
+	}
+
+	.feature-card:hover,
+	.download-card:hover {
+		transform: none;
+	}
+}

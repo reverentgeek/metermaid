@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{{ title }}</title>
+	<meta name="description" content="{{ description }}">
+	<link rel="canonical" href="{{ site.url }}{{ page.url }}">
+	<meta name="robots" content="index, follow">
+	<meta name="theme-color" content="#0a0c10">
+
+	{{-- Open Graph --}}
+	<meta property="og:title" content="{{ title }}">
+	<meta property="og:description" content="{{ description }}">
+	<meta property="og:url" content="{{ site.url }}{{ page.url }}">
+	<meta property="og:site_name" content="MeterMaid">
+	<meta property="og:type" content="website">
+	<meta property="og:locale" content="en_US">
+	<meta property="og:image" content="{{ site.url }}/images/social-preview.png">
+	<meta property="og:image:alt" content="MeterMaid desktop app metering a stereo input — integrated, short-term, and momentary LUFS readouts above a log-frequency spectrum analyzer.">
+
+	{{-- Twitter/X --}}
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:title" content="{{ title }}">
+	<meta name="twitter:description" content="{{ description }}">
+	<meta name="twitter:image" content="{{ site.url }}/images/social-preview.png">
+	<meta name="twitter:image:alt" content="MeterMaid desktop app metering a stereo input — integrated, short-term, and momentary LUFS readouts above a log-frequency spectrum analyzer.">
+
+	{{-- Favicon --}}
+	<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link
+		href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+		rel="stylesheet">
+	<link rel="stylesheet" href="/css/styles.css">
+
+	{{-- SoftwareApplication structured data --}}
+	<script type="application/ld+json">
+	{
+		"@context": "https://schema.org",
+		"@type": "SoftwareApplication",
+		"name": "MeterMaid",
+		"description": "A cross-platform desktop LUFS / loudness meter. Measures loudness to the EBU R128 / ITU-R BS.1770 standard with a real-time frequency spectrum.",
+		"url": "{{ site.url }}",
+		"applicationCategory": "MultimediaApplication",
+		"operatingSystem": "macOS, Windows, Linux",
+		"downloadUrl": "{{ site.repo }}/releases/latest",
+		"softwareVersion": "{{ release.version }}",
+		"license": "https://opensource.org/license/mit",
+		"offers": {
+			"@type": "Offer",
+			"price": "0",
+			"priceCurrency": "USD"
+		},
+		"author": {
+			"@type": "Person",
+			"name": "{{ site.author }}",
+			"url": "{{ site.authorUrl }}"
+		}
+	}
+	</script>
+</head>
+
+<body class="bg-ink-950 text-ink-100 font-body antialiased">
+	<a href="#main-content" class="skip-link">Skip to main content</a>
+
+	<header class="relative z-20">
+		<nav class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
+			<a href="/" class="group flex items-center gap-3 animate-fade-in" aria-label="MeterMaid home">
+				<svg width="30" height="30" viewBox="88 88 336 336" class="shrink-0" aria-hidden="true" focusable="false">
+					<defs>
+						<linearGradient id="nav-meter" gradientUnits="userSpaceOnUse" x1="0" y1="416" x2="0" y2="96">
+							<stop offset="0%" stop-color="#54e08a" />
+							<stop offset="55%" stop-color="#f2c14e" />
+							<stop offset="100%" stop-color="#ff5d5d" />
+						</linearGradient>
+					</defs>
+					<g fill="url(#nav-meter)">
+						<rect x="96" y="96" width="32" height="320" rx="12" />
+						<rect x="144" y="166" width="32" height="250" rx="12" />
+						<rect x="192" y="250" width="32" height="166" rx="12" />
+						<rect x="240" y="294" width="32" height="122" rx="12" />
+						<rect x="288" y="250" width="32" height="166" rx="12" />
+						<rect x="336" y="166" width="32" height="250" rx="12" />
+						<rect x="384" y="96" width="32" height="320" rx="12" />
+					</g>
+				</svg>
+				<span class="font-display text-lg font-600 tracking-tight text-ink-100 group-hover:text-green-400 transition-colors">MeterMaid</span>
+			</a>
+			<div class="flex items-center gap-6 text-sm font-500">
+				<a href="#features" class="hidden sm:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Features</a>
+				<a href="#download" class="hidden sm:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Download</a>
+				<a href="{{ site.repo }}" class="inline-flex items-center gap-2 text-ink-200 hover:text-green-400 transition-colors" rel="noopener">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+						<path d="M12 .5C5.73.5.5 5.73.5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.3-1.7-1.3-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.76.41-1.27.74-1.56-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.41-5.25 5.69.42.36.79 1.08.79 2.18v3.23c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z" />
+					</svg>
+					<span class="hidden sm:inline">GitHub</span>
+				</a>
+			</div>
+		</nav>
+	</header>
+
+	<main id="main-content" tabindex="-1">
+		{{{ content }}}
+	</main>
+
+	<footer class="relative border-t border-ink-700 bg-ink-900">
+		<div class="relative z-10 max-w-6xl mx-auto px-6 py-12">
+			<div class="grid gap-8 sm:grid-cols-2 items-start">
+				<div>
+					<div class="flex items-center gap-3 mb-3">
+						<svg width="22" height="22" viewBox="88 88 336 336" aria-hidden="true" focusable="false">
+							<g fill="#54e08a">
+								<rect x="96" y="96" width="32" height="320" rx="12" />
+								<rect x="144" y="166" width="32" height="250" rx="12" />
+								<rect x="192" y="250" width="32" height="166" rx="12" />
+								<rect x="240" y="294" width="32" height="122" rx="12" />
+								<rect x="288" y="250" width="32" height="166" rx="12" />
+								<rect x="336" y="166" width="32" height="250" rx="12" />
+								<rect x="384" y="96" width="32" height="320" rx="12" />
+							</g>
+						</svg>
+						<span class="font-display text-base font-600 text-ink-100">MeterMaid</span>
+					</div>
+					<p class="text-ink-300 text-sm leading-relaxed max-w-md">
+						A free, open-source desktop loudness meter. Built with Tauri — a Rust audio engine and a web UI.
+					</p>
+				</div>
+				<nav class="flex flex-col sm:items-end gap-2 text-sm" aria-label="Footer">
+					<a href="{{ site.repo }}" class="link-underline text-ink-200 hover:text-green-400 transition-colors" rel="noopener">Source on GitHub</a>
+					<a href="{{ site.repo }}/releases" class="link-underline text-ink-200 hover:text-green-400 transition-colors" rel="noopener">All releases</a>
+					<a href="{{ site.repo }}/issues/new/choose" class="link-underline text-ink-200 hover:text-green-400 transition-colors" rel="noopener">Report an issue</a>
+					<a href="{{ site.blogPost }}" class="link-underline text-ink-200 hover:text-green-400 transition-colors" rel="noopener">How to level patches</a>
+				</nav>
+			</div>
+			<div class="mt-10 pt-6 border-t border-ink-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+				<p class="text-ink-300 text-sm">&copy; {{ new Date().getFullYear() }} {{ site.author }}. MIT licensed.</p>
+				<p class="text-ink-300 text-xs font-mono tracking-wide">EBU R128 · ITU-R BS.1770</p>
+			</div>
+		</div>
+	</footer>
+
+	<script>
+		// Move keyboard focus to in-page anchor targets so fragment links are
+		// useful for keyboard users, not just a scroll. tabindex="-1" on the
+		// target is required; this script provides the explicit .focus() call
+		// that browsers do not do reliably on their own for click events.
+		document.querySelectorAll( 'a[href^="#"]' ).forEach( ( link ) => {
+			link.addEventListener( "click", () => {
+				const id = link.getAttribute( "href" ).slice( 1 );
+				const target = document.getElementById( id );
+				if ( target ) target.focus();
+			} );
+		} );
+	</script>
+
+</body>
+
+</html>
