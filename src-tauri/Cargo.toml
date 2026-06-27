@@ -29,7 +29,7 @@ tauri-plugin-process = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-cpal = "0.15"
+cpal = "0.18"
 ebur128 = "0.1"
 rustfft = "6"
 ringbuf = "0.4"
@@ -37,4 +37,23 @@ ringbuf = "0.4"
 # The self-updater is desktop-only (no mobile target).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+
+# ASIO host — x64 Windows only. ASIO exposes the device's native channel count
+# (WASAPI shared mode reports only the endpoint default, often mono). There is
+# no ARM64 ASIO SDK, so this feature is scoped to x86_64. Building it requires
+# libclang (bindgen) + the MSVC C++ toolchain and `CPAL_ASIO_DIR` pointing at
+# the Steinberg ASIO SDK. Cargo unifies this with the base `cpal` dependency.
+[target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
+cpal = { version = "0.18", features = ["asio"] }
+
+# cpal 0.18 declares `windows` and `windows-core` as independent dependencies
+# (each ">=0.61, <=0.62"). Tauri's `tao` pins `windows` to 0.61, but nothing
+# constrains `windows-core`, so it floats to 0.62 — and cpal's WASAPI backend
+# uses the `implement` macro from `windows` 0.61 while referencing
+# `windows-core` 0.62 types, which don't match (build fails with
+# "IActivateAudioInterfaceCompletionHandler: windows_core::Interface is not
+# satisfied"). Pin `windows-core` to the 0.61 line so it matches the resolved
+# `windows` crate. Applies to all Windows targets (WASAPI), not just ASIO.
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.61"
 

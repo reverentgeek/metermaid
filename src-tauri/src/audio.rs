@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::Sample;
 use ebur128::{EbuR128, Mode};
 use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::HeapRb;
@@ -369,58 +370,63 @@ may be using the device exclusively."
     }
 }
 
-/// Map a cpal `DefaultStreamConfigError` (raised while reading a device's
-/// capabilities) to an actionable message naming the device.
-fn explain_default_config_error(device: &str, err: cpal::DefaultStreamConfigError) -> String {
-    use cpal::DefaultStreamConfigError::*;
-    match err {
-        DeviceNotAvailable => {
+/// Map a cpal `Error` raised while reading a device's capabilities
+/// (`default_input_config`) to an actionable message naming the device.
+fn explain_default_config_error(device: &str, err: cpal::Error) -> String {
+    use cpal::ErrorKind::*;
+    match err.kind() {
+        DeviceNotAvailable | DeviceChanged => {
             format!("“{device}” is no longer available. Reconnect it or pick another input device.")
         }
-        StreamTypeNotSupported => {
+        UnsupportedConfig | UnsupportedOperation => {
             format!("“{device}” doesn’t expose a capture format MeterMaid can read.")
         }
-        other => format!(
-            "Couldn’t read the audio settings for “{device}”: {other}.{}",
+        _ => format!(
+            "Couldn’t read the audio settings for “{device}”: {err}.{}",
             mic_permission_hint()
         ),
     }
 }
 
-/// Map a cpal `BuildStreamError` (raised while opening the capture stream) to an
-/// actionable message. Backend-specific failures — where a denied microphone
-/// permission usually lands — carry the permission hint.
-fn explain_build_error(device: &str, err: cpal::BuildStreamError) -> String {
-    use cpal::BuildStreamError::*;
-    match err {
-        DeviceNotAvailable => {
+/// Map a cpal `Error` raised while opening the capture stream
+/// (`build_input_stream`) to an actionable message. Backend failures — where a
+/// denied microphone permission usually lands — carry the permission hint.
+fn explain_build_error(device: &str, err: cpal::Error) -> String {
+    use cpal::ErrorKind::*;
+    match err.kind() {
+        DeviceNotAvailable | DeviceChanged => {
             format!("“{device}” is no longer available. Reconnect it or pick another input device.")
         }
-        StreamConfigNotSupported => format!(
+        // ASIO drivers are exclusive-access: only one app may hold the device.
+        DeviceBusy => format!(
+            "“{device}” is in use by another application. ASIO devices allow only one app at a \
+time — close the other app (such as a DAW) and try again."
+        ),
+        UnsupportedConfig => format!(
             "“{device}” doesn’t support the selected sample rate or channels. \
 Try a different sample rate."
         ),
-        InvalidArgument => format!(
+        InvalidInput => format!(
             "MeterMaid requested invalid capture settings for “{device}”. \
 Try a different channel or sample-rate selection."
         ),
-        other => format!(
-            "Couldn’t open “{device}” for capture: {other}.{}",
+        _ => format!(
+            "Couldn’t open “{device}” for capture: {err}.{}",
             mic_permission_hint()
         ),
     }
 }
 
-/// Map a cpal `PlayStreamError` (raised while starting the built stream) to an
+/// Map a cpal `Error` raised while starting the built stream (`play`) to an
 /// actionable message.
-fn explain_play_error(device: &str, err: cpal::PlayStreamError) -> String {
-    use cpal::PlayStreamError::*;
-    match err {
-        DeviceNotAvailable => {
+fn explain_play_error(device: &str, err: cpal::Error) -> String {
+    use cpal::ErrorKind::*;
+    match err.kind() {
+        DeviceNotAvailable | DeviceChanged => {
             format!("“{device}” is no longer available. Reconnect it or pick another input device.")
         }
-        other => format!(
-            "Couldn’t start capture on “{device}”: {other}.{}",
+        _ => format!(
+            "Couldn’t start capture on “{device}”: {err}.{}",
             mic_permission_hint()
         ),
     }
@@ -432,7 +438,7 @@ fn find_device(name: &Option<String>) -> Result<cpal::Device, String> {
         Some(name) => host
             .input_devices()
             .map_err(|e| format!("Couldn’t list input devices: {e}"))?
-            .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
+            .find(|d| &d.to_string() == name)
             .ok_or_else(|| {
                 format!(
                     "Input device “{name}” wasn’t found. It may have been disconnected — \
@@ -448,27 +454,24 @@ pick another device from the list."
 
 pub fn list_input_devices() -> Result<Vec<DeviceInfo>, String> {
     let host = cpal::default_host();
-    let default_name = host.default_input_device().and_then(|d| d.name().ok());
+    let default_name = host.default_input_device().map(|d| d.to_string());
     let mut out = Vec::new();
     for device in host.input_devices().map_err(|e| e.to_string())? {
-        if let Ok(name) = device.name() {
-            let is_default = Some(&name) == default_name.as_ref();
-            out.push(DeviceInfo { name, is_default });
-        }
+        let name = device.to_string();
+        let is_default = Some(&name) == default_name.as_ref();
+        out.push(DeviceInfo { name, is_default });
     }
     Ok(out)
 }
 
 pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
     let device = find_device(&name)?;
-    let dev_name = device
-        .name()
-        .unwrap_or_else(|_| "the selected device".into());
+    let dev_name = device.to_string();
     let default = device
         .default_input_config()
         .map_err(|e| explain_default_config_error(&dev_name, e))?;
     let channels = default.channels();
-    let default_sample_rate = default.sample_rate().0;
+    let default_sample_rate = default.sample_rate();
 
     let mut rates = BTreeSet::new();
     rates.insert(default_sample_rate);
@@ -482,8 +485,8 @@ pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
             if range.channels() != channels || range.sample_format() != default.sample_format() {
                 continue;
             }
-            let min = range.min_sample_rate().0;
-            let max = range.max_sample_rate().0;
+            let min = range.min_sample_rate();
+            let max = range.max_sample_rate();
             for &cand in CANDIDATE_RATES.iter() {
                 if cand >= min && cand <= max {
                     rates.insert(cand);
@@ -520,9 +523,7 @@ fn build_stream(
     sel: Vec<u32>,
 ) -> Result<BuiltStream, String> {
     let device = find_device(&device_name)?;
-    let dev_name = device
-        .name()
-        .unwrap_or_else(|_| "the selected device".into());
+    let dev_name = device.to_string();
 
     // Debug-only: force a representative capture failure so the error UI can be
     // exercised without unplugging hardware or revoking permissions. Run the dev
@@ -532,11 +533,10 @@ fn build_stream(
     if std::env::var_os("METERMAID_SIMULATE_ERROR").is_some() {
         return Err(explain_build_error(
             &dev_name,
-            cpal::BuildStreamError::BackendSpecific {
-                err: cpal::BackendSpecificError {
-                    description: "simulated failure (METERMAID_SIMULATE_ERROR)".into(),
-                },
-            },
+            cpal::Error::with_message(
+                cpal::ErrorKind::BackendError,
+                "simulated failure (METERMAID_SIMULATE_ERROR)",
+            ),
         ));
     }
     let default = device
@@ -544,7 +544,7 @@ fn build_stream(
         .map_err(|e| explain_default_config_error(&dev_name, e))?;
     let device_channels = default.channels();
     let sample_format = default.sample_format();
-    let rate = sample_rate.unwrap_or_else(|| default.sample_rate().0);
+    let rate = sample_rate.unwrap_or_else(|| default.sample_rate());
 
     let sel_idx: Vec<usize> = sel.iter().map(|&c| c as usize).collect();
     validate_selection(&sel_idx, device_channels as usize)?;
@@ -552,7 +552,7 @@ fn build_stream(
 
     let config = cpal::StreamConfig {
         channels: device_channels,
-        sample_rate: cpal::SampleRate(rate),
+        sample_rate: rate,
         buffer_size: cpal::BufferSize::Default,
     };
 
@@ -569,7 +569,7 @@ fn build_stream(
     // unplugged mid-capture). Forward it to the UI so the user sees a reason
     // rather than a silently frozen meter.
     let err_app = app.clone();
-    let on_error = move |err: cpal::StreamError| {
+    let on_error = move |err: cpal::Error| {
         eprintln!("audio stream error: {err}");
         let _ = err_app.emit("stream-error", err.to_string());
     };
@@ -577,7 +577,7 @@ fn build_stream(
     let cb_dropped = Arc::clone(&dropped);
     let stream = match sample_format {
         cpal::SampleFormat::F32 => device.build_input_stream(
-            &config,
+            config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 let pushed = producer.push_slice(data);
                 if pushed < data.len() {
@@ -593,7 +593,7 @@ fn build_stream(
             // ring's worth of samples).
             let mut scratch = vec![0.0f32; cap];
             device.build_input_stream(
-                &config,
+                config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
                     let n = data.len().min(scratch.len());
                     for (dst, &s) in scratch[..n].iter_mut().zip(data) {
@@ -611,11 +611,32 @@ fn build_stream(
         cpal::SampleFormat::U16 => {
             let mut scratch = vec![0.0f32; cap];
             device.build_input_stream(
-                &config,
+                config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
                     let n = data.len().min(scratch.len());
                     for (dst, &s) in scratch[..n].iter_mut().zip(data) {
                         *dst = (s as f32 - 32768.0) / 32768.0;
+                    }
+                    let pushed = producer.push_slice(&scratch[..n]);
+                    if pushed < data.len() {
+                        cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
+                    }
+                },
+                on_error,
+                None,
+            )
+        }
+        // 24-bit packed PCM — what pro-audio ASIO drivers (e.g. the Line 6
+        // Helix) report. cpal stores I24 in a 4-byte container; `from_sample`
+        // does the scaled conversion to f32.
+        cpal::SampleFormat::I24 => {
+            let mut scratch = vec![0.0f32; cap];
+            device.build_input_stream(
+                config,
+                move |data: &[cpal::I24], _: &cpal::InputCallbackInfo| {
+                    let n = data.len().min(scratch.len());
+                    for (dst, &s) in scratch[..n].iter_mut().zip(data) {
+                        *dst = f32::from_sample(s);
                     }
                     let pushed = producer.push_slice(&scratch[..n]);
                     if pushed < data.len() {
@@ -799,24 +820,32 @@ mod tests {
     #[test]
     fn build_error_messages_name_the_device_and_are_actionable() {
         // A vanished device tells the user to reconnect or pick another.
-        let msg = explain_build_error("Scarlett 2i2", cpal::BuildStreamError::DeviceNotAvailable);
+        let msg = explain_build_error(
+            "Scarlett 2i2",
+            cpal::Error::new(cpal::ErrorKind::DeviceNotAvailable),
+        );
         assert!(msg.contains("Scarlett 2i2"), "got: {msg}");
         assert!(msg.contains("no longer available"), "got: {msg}");
 
         // An unsupported config points at the sample rate.
         let msg = explain_build_error(
             "Built-in Mic",
-            cpal::BuildStreamError::StreamConfigNotSupported,
+            cpal::Error::new(cpal::ErrorKind::UnsupportedConfig),
         );
         assert!(msg.contains("sample rate"), "got: {msg}");
 
-        // Backend-specific failures (where denied mic permission lands) carry
-        // the permission hint.
-        let backend = cpal::BuildStreamError::BackendSpecific {
-            err: cpal::BackendSpecificError {
-                description: "kAudioUnitErr_NoConnection".into(),
-            },
-        };
+        // A device held exclusively (ASIO) names the conflict.
+        let msg = explain_build_error("Helix", cpal::Error::new(cpal::ErrorKind::DeviceBusy));
+        assert!(msg.contains("Helix"), "got: {msg}");
+        assert!(
+            msg.to_lowercase().contains("another application"),
+            "got: {msg}"
+        );
+
+        // Opaque backend failures (where denied mic permission lands) carry the
+        // permission hint.
+        let backend =
+            cpal::Error::with_message(cpal::ErrorKind::BackendError, "kAudioUnitErr_NoConnection");
         let msg = explain_build_error("Built-in Mic", backend);
         assert!(msg.contains("Built-in Mic"), "got: {msg}");
         assert!(msg.to_lowercase().contains("microphone"), "got: {msg}");
@@ -824,11 +853,7 @@ mod tests {
 
     #[test]
     fn play_error_carries_permission_hint() {
-        let backend = cpal::PlayStreamError::BackendSpecific {
-            err: cpal::BackendSpecificError {
-                description: "denied".into(),
-            },
-        };
+        let backend = cpal::Error::with_message(cpal::ErrorKind::BackendError, "denied");
         let msg = explain_play_error("Mic", backend);
         assert!(msg.contains("Mic"), "got: {msg}");
         assert!(msg.to_lowercase().contains("microphone"), "got: {msg}");
@@ -1080,6 +1105,57 @@ mod tests {
         assert!(
             (ours - ff).abs() < 1.0,
             "integrated LUFS disagrees with ffmpeg: ours={ours}, ffmpeg={ff}"
+        );
+    }
+
+    // --- ASIO enumeration spike (Phase 1, manual) ---------------------------
+    //
+    // Validates the premise behind Windows multichannel support: that a
+    // multichannel interface (e.g. the Line 6 Helix) reports its full native
+    // channel count through the ASIO host, where WASAPI shared mode reports
+    // only the endpoint default (often mono). Requires the `asio` cpal feature
+    // (x64 Windows), the ASIO SDK build chain, and the device plugged in and
+    // not held by another app. Ignored by default; run with:
+    //   cargo test asio_enumerates_devices -- --ignored --nocapture
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    #[ignore]
+    fn asio_enumerates_devices() {
+        use cpal::HostId;
+
+        let host = cpal::host_from_id(HostId::Asio).expect(
+            "ASIO host unavailable — is the `asio` feature enabled and a driver installed?",
+        );
+
+        // Iterate ALL devices (not input_devices(), which silently drops any
+        // driver whose config query fails) so a failed driver load is visible
+        // rather than vanishing. Two of the registered drivers are interposers
+        // for hardware that may be absent — we expect those to error.
+        let devices: Vec<_> = host.devices().expect("enumerate ASIO devices").collect();
+
+        eprintln!("ASIO devices (all): {}", devices.len());
+        let mut max_channels = 0u16;
+        for device in &devices {
+            let name = device.to_string();
+            match device.default_input_config() {
+                Ok(cfg) => {
+                    max_channels = max_channels.max(cfg.channels());
+                    eprintln!(
+                        "  [ok]  {name}: {} in-ch @ {} Hz ({:?})",
+                        cfg.channels(),
+                        cfg.sample_rate(),
+                        cfg.sample_format()
+                    );
+                }
+                Err(e) => eprintln!("  [err] {name}: default_input_config: {e}"),
+            }
+        }
+
+        assert!(!devices.is_empty(), "no ASIO drivers registered/visible");
+        assert!(
+            max_channels > 1,
+            "no ASIO driver yielded a multichannel input config (max was {max_channels}); \
+see per-device errors above"
         );
     }
 }
