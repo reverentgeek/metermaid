@@ -30,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **Space resets the measurement** while capturing — the leveling loop hits Reset constantly between patches, so the shortcut removes a mouse round-trip from the most-repeated action. It's ignored when focus is in an input, select, or button so Space still types and activates normally there, and the Reset button tooltip advertises it.
+- **Space resets the measurement** while capturing. The leveling loop hits Reset constantly between patches, so the shortcut removes a mouse round-trip from the most-repeated action. It's ignored when focus is in an input, select, or button so Space still types and activates normally there, and the Reset button tooltip advertises it.
 
 ### Changed
 
@@ -50,14 +50,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- An application menu with **About MeterMaid** and **Check for Updates…** items — on macOS in the app menu, and on Windows/Linux under a new **Help** menu. Check for Updates runs the same check as the in-app button.
+- An application menu with **About MeterMaid** and **Check for Updates…** items: on macOS in the app menu, and on Windows/Linux under a new **Help** menu. Check for Updates runs the same check as the in-app button.
 - A redesigned **About MeterMaid** dialog: a centered in-app panel showing the app version, description, author, and copyright, with clickable links to the author's website, the GitHub repository, and the issue tracker (opened in the default browser).
 
 ## [0.3.0] - 2026-06-25
 
 ### Added
 
-- MeterMaid can now update itself. It checks GitHub Releases for a newer signed build on launch (quietly — nothing appears unless an update exists) and via a **Check for updates** button in the config row. When a newer version is available, a banner shows the version and release notes with a one-click **Install & Restart**; the download is signature-verified before it is applied. Self-update covers the macOS, Windows, and Linux AppImage builds (Linux `.deb`/`.rpm` installs continue to update through their package manager).
+- MeterMaid can now update itself. It checks GitHub Releases for a newer signed build on launch (quietly, nothing appears unless an update exists) and via a **Check for updates** button in the config row. When a newer version is available, a banner shows the version and release notes with a one-click **Install & Restart**; the download is signature-verified before it is applied. Self-update covers the macOS, Windows, and Linux AppImage builds (Linux `.deb`/`.rpm` installs continue to update through their package manager).
 
 ## [0.2.0] - 2026-06-23
 
@@ -75,10 +75,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- Capture failures now produce plain-language, actionable messages instead of raw backend strings — they name the device, suggest a fix (e.g. reconnect the device or try a different sample rate), and add an OS-specific hint to check microphone permission when a start fails for an opaque reason.
+- Capture failures now produce plain-language, actionable messages instead of raw backend strings: they name the device, suggest a fix (e.g. reconnect the device or try a different sample rate), and add an OS-specific hint to check microphone permission when a start fails for an opaque reason.
 - Errors are now shown in a dismissible banner with the full, selectable message and a **Copy** button (plus a link to the issue tracker) so they can be read and reported, rather than truncated in the toolbar status.
 - The default target loudness is now −20 LUFS (was −14). Only affects fresh installs; a previously saved target is still restored.
-- While capturing, **Reset** is now the prominent (amber) primary control — the action you take between patch changes — and **Stop** is a quiet secondary button; Reset is hidden when idle. A one-time hint on first capture explains the Reset-between-patches workflow.
+- While capturing, **Reset** is now the prominent (amber) primary control for the action you take between patch changes, and **Stop** is a quiet secondary button; Reset is hidden when idle. A one-time hint on first capture explains the Reset-between-patches workflow.
 - The UI now bundles its fonts (Inter for the interface, JetBrains Mono for the numeric readouts and spectrum labels) so typography is identical on macOS, Windows, and Linux instead of falling back to each OS's default fonts.
 
 ### Fixed
@@ -90,7 +90,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Initial release: ITU-R BS.1770 / EBU R128 loudness metering (integrated, short-term, momentary, LRA), true-peak with peak-hold, a log-frequency spectrum analyzer, and a target/apply gain helper.
-- Persist configuration between sessions: window size/position/monitor (via `tauri-plugin-window-state`), plus the selected audio device, channels, sample rate, target LUFS, and clip ceiling (via `tauri-plugin-store`). Restored selections are re-validated against the current device — a missing device falls back to the system default with a notice, and out-of-range channels or sample rates fall back gracefully.
+- Persist configuration between sessions: window size/position/monitor (via `tauri-plugin-window-state`), plus the selected audio device, channels, sample rate, target LUFS, and clip ceiling (via `tauri-plugin-store`). Restored selections are re-validated against the current device: a missing device falls back to the system default with a notice, and out-of-range channels or sample rates fall back gracefully.
 - If the monitor the window was last shown on is gone at launch (e.g. an external display was unplugged), the window is recentered on an available monitor instead of restoring off-screen.
 - Optional **Auto-start** toggle that begins capture on launch when a valid saved device and channels are restored.
 - Surface OS audio stream faults (e.g. the device being unplugged mid-capture) in the UI instead of silently freezing the meter.
