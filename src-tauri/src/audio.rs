@@ -43,9 +43,24 @@ const CANDIDATE_RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_
 /// Scratch size (samples) used to drain the SPSC ring on the engine thread.
 const DRAIN_CHUNK: usize = 8192;
 
+/// Identity prefix marking an ASIO-host device. The default (WASAPI/CoreAudio/
+/// ALSA) host uses the bare device name as its id, so settings saved before
+/// ASIO existed still resolve.
+#[cfg(all(windows, target_arch = "x86_64"))]
+const ASIO_ID_PREFIX: &str = "asio:";
+
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceInfo {
+    /// Host-qualified, stable identity: the dropdown value, the `settings.json`
+    /// key, and what `start_capture` / `get_device_config` receive. ASIO devices
+    /// are prefixed (`asio:`); default-host devices use the bare name.
+    pub id: String,
+    /// Raw device name, for display.
     pub name: String,
+    /// Which host the device belongs to: `"default"` or `"asio"`. Drives the
+    /// disambiguating label and the (advisory) sample-rate picker.
+    pub host: String,
     pub is_default: bool,
 }
 
@@ -432,36 +447,90 @@ fn explain_play_error(device: &str, err: cpal::Error) -> String {
     }
 }
 
-fn find_device(name: &Option<String>) -> Result<cpal::Device, String> {
-    let host = cpal::default_host();
-    match name {
-        Some(name) => host
-            .input_devices()
-            .map_err(|e| format!("Couldn’t list input devices: {e}"))?
-            .find(|d| &d.to_string() == name)
-            .ok_or_else(|| {
-                format!(
-                    "Input device “{name}” wasn’t found. It may have been disconnected — \
-pick another device from the list."
-                )
-            }),
-        None => host.default_input_device().ok_or_else(|| {
-            "No input device found. Connect a microphone or audio interface and try again."
-                .to_string()
-        }),
-    }
+/// The ASIO host (x64 Windows only); absent on every other build. cpal keeps
+/// WASAPI as the default host, so ASIO is opened explicitly as a second host.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn asio_host() -> Result<cpal::Host, String> {
+    cpal::host_from_id(cpal::HostId::Asio).map_err(|e| format!("The ASIO host is unavailable: {e}"))
 }
 
-pub fn list_input_devices() -> Result<Vec<DeviceInfo>, String> {
+/// Find an input device by its raw name within a specific host.
+fn find_in_host(host: &cpal::Host, name: &str) -> Result<cpal::Device, String> {
+    host.input_devices()
+        .map_err(|e| format!("Couldn’t list input devices: {e}"))?
+        .find(|d| d.to_string() == name)
+        .ok_or_else(|| {
+            format!(
+                "Input device “{name}” wasn’t found. It may have been disconnected — \
+pick another device from the list."
+            )
+        })
+}
+
+/// Resolve a device id (as produced by `list_input_devices`) to a cpal device,
+/// routing to the host the id names. `None` selects the default host's default
+/// device. An `asio:`-prefixed id targets the ASIO host (x64 Windows); any other
+/// id is a default-host device name (so settings saved before ASIO still work).
+fn find_device(id: &Option<String>) -> Result<cpal::Device, String> {
+    let Some(id) = id else {
+        return cpal::default_host().default_input_device().ok_or_else(|| {
+            "No input device found. Connect a microphone or audio interface and try again."
+                .to_string()
+        });
+    };
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    if let Some(name) = id.strip_prefix(ASIO_ID_PREFIX) {
+        return find_in_host(&asio_host()?, name);
+    }
+    find_in_host(&cpal::default_host(), id)
+}
+
+/// Enumerate input devices. `include_asio` controls whether the (x64-Windows)
+/// ASIO host is also enumerated: cpal must *load* each ASIO driver to list it,
+/// which is slow and disturbs other ASIO apps, so the idle hotplug poll passes
+/// `false` and only refreshes ASIO when the default-host topology changes.
+pub fn list_input_devices(include_asio: bool) -> Result<Vec<DeviceInfo>, String> {
     let host = cpal::default_host();
     let default_name = host.default_input_device().map(|d| d.to_string());
     let mut out = Vec::new();
     for device in host.input_devices().map_err(|e| e.to_string())? {
         let name = device.to_string();
         let is_default = Some(&name) == default_name.as_ref();
-        out.push(DeviceInfo { name, is_default });
+        out.push(DeviceInfo {
+            id: name.clone(),
+            name,
+            host: "default".to_string(),
+            is_default,
+        });
+    }
+    if include_asio {
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        append_asio_devices(&mut out);
     }
     Ok(out)
+}
+
+/// Append ASIO-host input devices (x64 Windows). Best-effort: a missing or flaky
+/// ASIO driver must never break the default-host list, so errors are swallowed.
+/// cpal loads each driver to enumerate it, so drivers for absent hardware (e.g.
+/// the Helix / HX-Stomp interposers) simply don't appear.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn append_asio_devices(out: &mut Vec<DeviceInfo>) {
+    let Ok(host) = asio_host() else {
+        return;
+    };
+    let Ok(devices) = host.input_devices() else {
+        return;
+    };
+    for device in devices {
+        let name = device.to_string();
+        out.push(DeviceInfo {
+            id: format!("{ASIO_ID_PREFIX}{name}"),
+            name,
+            host: "asio".to_string(),
+            is_default: false,
+        });
+    }
 }
 
 pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
@@ -775,6 +844,14 @@ struct ActiveStream {
 mod tests {
     use super::*;
     use std::f32::consts::PI;
+
+    // ASIO drivers are single-instance: two tests loading the driver at once
+    // (as `cargo test -- --include-ignored` does, since it runs ignored tests
+    // in parallel) collide and one sees zero channels. Serialize the ASIO
+    // hardware tests on this lock. `into_inner` recovers from a poisoned lock
+    // so one failing ASIO test doesn't cascade into the other.
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    static ASIO_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// Build a configured analyzer for the common mono-device case.
     fn analyzer(sample_rate: u32, device_channels: usize, sel: Vec<usize>) -> Analyzer {
@@ -1123,6 +1200,7 @@ mod tests {
     fn asio_enumerates_devices() {
         use cpal::HostId;
 
+        let _asio = ASIO_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let host = cpal::host_from_id(HostId::Asio).expect(
             "ASIO host unavailable — is the `asio` feature enabled and a driver installed?",
         );
@@ -1157,5 +1235,36 @@ mod tests {
             "no ASIO driver yielded a multichannel input config (max was {max_channels}); \
 see per-device errors above"
         );
+    }
+
+    // Exercises the Phase 2 merged enumeration: `list_input_devices` should
+    // surface ASIO devices alongside the default host, tagged with host "asio"
+    // and an `asio:`-prefixed id that round-trips back through `find_device`.
+    // Requires an ASIO device plugged in. Run with:
+    //   cargo test list_devices_includes_asio -- --ignored --nocapture
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    #[ignore]
+    fn list_devices_includes_asio() {
+        let _asio = ASIO_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let devices = list_input_devices(true).expect("list devices");
+        for d in &devices {
+            eprintln!("  host={} id={:?} name={:?}", d.host, d.id, d.name);
+        }
+        let asio: Vec<_> = devices.iter().filter(|d| d.host == "asio").collect();
+        assert!(
+            !asio.is_empty(),
+            "no ASIO devices surfaced by list_input_devices"
+        );
+        for d in asio {
+            assert!(
+                d.id.starts_with(ASIO_ID_PREFIX),
+                "ASIO device id should be prefixed: {:?}",
+                d.id
+            );
+            // The id must resolve back to a real device through find_device.
+            find_device(&Some(d.id.clone()))
+                .unwrap_or_else(|e| panic!("find_device failed for {:?}: {e}", d.id));
+        }
     }
 }

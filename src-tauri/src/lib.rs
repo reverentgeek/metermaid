@@ -11,8 +11,8 @@ struct AppState {
 }
 
 #[tauri::command]
-fn list_devices() -> Result<Vec<DeviceInfo>, String> {
-    audio::list_input_devices()
+fn list_devices(include_asio: bool) -> Result<Vec<DeviceInfo>, String> {
+    audio::list_input_devices(include_asio)
 }
 
 #[tauri::command]
