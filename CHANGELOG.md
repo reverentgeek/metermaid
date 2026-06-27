@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-27
+
 ### Added
 
 - **Multichannel capture on Windows via ASIO.** Multichannel interfaces such as the Line 6 Helix Stadium XL now expose all their channels on Windows (e.g. Ch 1–8) through the **ASIO** host, where WASAPI shared mode reported only a single channel. ASIO devices appear in the input picker tagged `(ASIO)` next to their WASAPI endpoint; pick the `(ASIO)` entry for multichannel. ASIO is exclusive-access and its sample rate is set in the device's own control panel. This is x64-Windows only (no ARM64 ASIO SDK); macOS, Linux, and Windows-ARM64 are unaffected. See the README "ASIO multichannel capture" section.
