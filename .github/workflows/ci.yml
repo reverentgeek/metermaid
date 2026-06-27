@@ -27,8 +27,12 @@ jobs:
             app:
               - '**'
               - '!site/**'
+              - '!netlify.toml'
+              - '!.github/workflows/site-deploy.yml'
             site:
               - 'site/**'
+              - 'netlify.toml'
+              - '.github/workflows/site-deploy.yml'
 
   build-and-test:
     needs: changes
