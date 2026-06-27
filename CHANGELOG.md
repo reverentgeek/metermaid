@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-27
+
+### Internal
+
+- Updated Tauri to 2.11.3 / tauri-build 2.6.3 (patch releases; pulls in tauri-utils 2.9.3 and tray-icon 0.24.1). Lockfile-only dependency maintenance with no behavior change.
+
 ## [0.4.0] - 2026-06-27
 
 ### Added
