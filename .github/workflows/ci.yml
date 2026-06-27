@@ -195,3 +195,33 @@ jobs:
 
       - name: Build and test
         run: pnpm test
+
+  # Single required status check for branch protection. The per-job checks
+  # above can't be required directly: a skipped MATRIX job (build-and-test on a
+  # site-only change) never reports its per-OS contexts — GitHub collapses it to
+  # one "build-and-test" check — so requiring "build-and-test (macos-latest)"
+  # would leave that context pending forever and block site-only PRs. This gate
+  # always runs and passes as long as every upstream job either succeeded or was
+  # intentionally skipped, so the ruleset requires just "CI OK".
+  ci-ok:
+    name: CI OK
+    needs: [changes, build-and-test, audit, build-site]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no required job failed
+        env:
+          RESULTS: >-
+            ${{ needs.changes.result }}
+            ${{ needs.build-and-test.result }}
+            ${{ needs.audit.result }}
+            ${{ needs.build-site.result }}
+        run: |
+          echo "Upstream job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::A CI job did not pass (result: $r)"; exit 1 ;;
+            esac
+          done
+          echo "All CI jobs succeeded or were intentionally skipped."
