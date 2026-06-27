@@ -21,8 +21,12 @@ const MIME = {
 };
 
 createServer( async ( req, res ) => {
-	const urlPath = req.url === "/" ? "/index.html" : ( req.url ?? "/index.html" );
-	const filePath = join( ROOT, urlPath.split( "?" )[ 0 ] );
+	let urlPath = ( req.url ?? "/" ).split( "?" )[ 0 ];
+	// Map directory paths (e.g. "/" or "/updates/") to their index.html.
+	if ( urlPath.endsWith( "/" ) ) {
+		urlPath += "index.html";
+	}
+	const filePath = join( ROOT, urlPath );
 
 	try {
 		const data = await readFile( filePath );

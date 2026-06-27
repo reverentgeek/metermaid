@@ -115,6 +115,66 @@ body {
 .delay-900 { animation-delay: 0.9s; }
 .delay-1100 { animation-delay: 1.1s; }
 
+/* ── "What's new" prose (HTML rendered from content/whatsnew.md markdown) ── */
+.whatsnew-body {
+	color: var(--color-ink-200);
+	line-height: 1.65;
+}
+
+.whatsnew-body p {
+	margin-bottom: 0.75rem;
+}
+
+.whatsnew-body p:last-child {
+	margin-bottom: 0;
+}
+
+.whatsnew-body ul {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+}
+
+.whatsnew-body li {
+	position: relative;
+	padding-left: 1.1rem;
+}
+
+.whatsnew-body li::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0.6em;
+	width: 5px;
+	height: 5px;
+	border-radius: 9999px;
+	background: var(--color-green-400);
+}
+
+.whatsnew-body strong {
+	color: var(--color-ink-100);
+	font-weight: 600;
+}
+
+.whatsnew-body code {
+	font-family: var(--font-mono);
+	font-size: 0.85em;
+	color: var(--color-green-400);
+	background: rgba(38, 44, 58, 0.6);
+	padding: 0.05em 0.35em;
+	border-radius: 4px;
+}
+
+.whatsnew-body a {
+	color: var(--color-green-400);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.whatsnew-body a:hover {
+	color: var(--color-green-500);
+}
+
 /* ── Subtle grid texture overlay ── */
 .grid-overlay::before {
 	content: "";

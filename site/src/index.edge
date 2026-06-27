@@ -311,23 +311,31 @@ description: MeterMaid is a free, open-source desktop loudness meter. Measure LU
 
 {{-- ═══ UPDATES ═══ --}}
 <section id="updates" tabindex="-1" aria-label="Updates" class="relative bg-ink-900 border-t border-ink-800">
-	<div class="relative z-10 max-w-4xl mx-auto px-6 py-24 text-center">
-		<p class="font-display text-green-400 text-sm font-600 tracking-[0.2em] uppercase mb-4">Updates</p>
-		<h2 class="font-display text-3xl sm:text-4xl font-700 tracking-tight text-ink-100 mb-5">
-			Always on the latest version</h2>
-		<p class="max-w-2xl mx-auto text-ink-200 leading-relaxed mb-4">
-			MeterMaid checks for a new version each time it launches and shows a banner when one is ready. One click
-			installs it and relaunches, so you stay current without hunting for a download.
-		</p>
-		<p class="text-ink-300 text-sm mb-10">The current release is <span class="font-mono text-ink-100">v{{ release.version }}</span>.</p>
-		<div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-			<a href="{{ release.htmlUrl }}"
-				class="inline-flex items-center gap-2 bg-green-400 hover:bg-green-500 text-ink-950 font-display font-600 text-lg px-8 py-4 rounded-lg transition-colors duration-200" rel="noopener">
-				Read the release notes
-			</a>
-			<a href="{{ site.repo }}/releases"
-				class="inline-flex items-center gap-2 border border-ink-600 text-ink-100 font-display font-500 text-lg px-8 py-4 rounded-lg hover:border-green-400 hover:text-green-400 transition-colors duration-200" rel="noopener">
-				See all releases
+	<div class="relative z-10 max-w-3xl mx-auto px-6 py-24">
+		<div class="max-w-2xl mb-10">
+			<p class="font-display text-green-400 text-sm font-600 tracking-[0.2em] uppercase mb-4">Updates</p>
+			<h2 class="font-display text-3xl sm:text-4xl font-700 tracking-tight text-ink-100 mb-5">
+				What's new</h2>
+			<p class="text-ink-200 leading-relaxed">
+				MeterMaid gains features and fixes regularly, and it updates itself in place, so you're always current.
+				The current version is <span class="font-mono text-ink-100">v{{ release.version }}</span>.
+			</p>
+		</div>
+
+		@if(whatsnew.featured)
+		<div class="bg-ink-850 border border-ink-700 rounded-lg p-7 mb-8">
+			<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-4">
+				<h3 class="font-display text-lg font-600 text-green-400">Latest highlights</h3>
+				<span class="text-ink-300 text-sm font-mono">v{{ whatsnew.featured.version }} · {{ whatsnew.featured.date }}</span>
+			</div>
+			<div class="whatsnew-body text-sm">{{{ whatsnew.featured.html }}}</div>
+		</div>
+		@end
+
+		<div>
+			<a href="/updates/"
+				class="inline-flex items-center justify-center gap-2 bg-green-400 hover:bg-green-500 text-ink-950 font-display font-600 text-lg px-8 py-4 rounded-lg transition-colors duration-200">
+				See all updates
 			</a>
 		</div>
 	</div>
