@@ -53,16 +53,26 @@ jobs:
           printf '%s\n' "$changed" | sed 's/^/  /'
           app=false
           site=false
+          any=false
           while IFS= read -r f; do
             [ -z "$f" ] && continue
+            any=true
             case "$f" in
+              # Website (site/ wins first, so site docs like site/CLAUDE.md and
+              # the page-content site/content/*.md still build + test the site).
               site/*|netlify.toml|.github/workflows/site-deploy.yml) site=true ;;
+              # Documentation needs neither the Rust matrix nor the site build,
+              # so a root README/CHANGELOG/CLAUDE/LICENSE or docs/ edit (even when
+              # bundled into a website PR) does not spin up build-and-test.
+              *.md|docs/*|LICENSE*) ;;
+              # Everything else is app code/config (src/, src-tauri/, lockfiles,
+              # third-party/, the CI workflow itself, …).
               *) app=true ;;
             esac
           done <<< "$changed"
-          # Safety net: if nothing classified (e.g. an empty diff) run everything
-          # rather than silently skipping all CI.
-          if [ "$app" = false ] && [ "$site" = false ]; then
+          # Safety net only for a genuinely empty diff (e.g. base detection
+          # failed): run everything. A docs-only change legitimately runs neither.
+          if [ "$any" = false ]; then
             app=true
             site=true
           fi
