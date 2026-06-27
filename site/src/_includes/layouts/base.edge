@@ -91,9 +91,9 @@
 				<span class="font-display text-lg font-600 tracking-tight text-ink-100 group-hover:text-green-400 transition-colors">MeterMaid</span>
 			</a>
 			<div class="flex items-center gap-6 text-sm font-500">
-				<a href="#features" class="hidden sm:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Features</a>
-				<a href="#download" class="hidden sm:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Download</a>
-				<a href="#getting-started" class="hidden md:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Get started</a>
+				<a href="/#features" class="hidden sm:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Features</a>
+				<a href="/#download" class="hidden sm:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Download</a>
+				<a href="/#getting-started" class="hidden md:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Get started</a>
 				<a href="/updates/" class="hidden md:inline-block link-underline text-ink-200 hover:text-ink-100 transition-colors">Updates</a>
 				<a href="{{ site.repo }}" class="inline-flex items-center gap-2 text-ink-200 hover:text-green-400 transition-colors" rel="noopener">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
@@ -148,12 +148,17 @@
 	<script>
 		// Move keyboard focus to in-page anchor targets so fragment links are
 		// useful for keyboard users, not just a scroll. tabindex="-1" on the
-		// target is required; this script provides the explicit .focus() call
-		// that browsers do not do reliably on their own for click events.
-		document.querySelectorAll( 'a[href^="#"]' ).forEach( ( link ) => {
+		// target is required; this provides the explicit .focus() that browsers
+		// do not do reliably on click. Handles both "#id" and "/#id" links (the
+		// latter let the nav anchors work from other pages, e.g. /updates/), and
+		// only fires when the link points at the page you're already on.
+		document.querySelectorAll( 'a[href*="#"]' ).forEach( ( link ) => {
 			link.addEventListener( "click", () => {
-				const id = link.getAttribute( "href" ).slice( 1 );
-				const target = document.getElementById( id );
+				const url = new URL( link.href, location.href );
+				if ( url.pathname !== location.pathname || !url.hash ) {
+					return;
+				}
+				const target = document.getElementById( url.hash.slice( 1 ) );
 				if ( target ) target.focus();
 			} );
 		} );

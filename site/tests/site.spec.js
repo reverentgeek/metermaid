@@ -260,3 +260,13 @@ test.describe( "Homepage updates teaser", () => {
 		await expect( page.locator( '#updates a[href="/updates/"]' ) ).toHaveCount( 1 );
 	} );
 } );
+
+test.describe( "Cross-page navigation", () => {
+	test( "nav anchors from /updates/ jump to the home-page section", async ( { page } ) => {
+		await page.goto( "/updates/" );
+		// Root-relative anchors (/#features) must navigate home, not no-op on /updates/.
+		await page.click( 'header nav a[href="/#features"]' );
+		await expect( page ).toHaveURL( /\/#features$/ );
+		await expect( page.locator( "#features" ) ).toBeVisible();
+	} );
+} );
