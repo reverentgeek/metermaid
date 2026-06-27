@@ -575,6 +575,12 @@ pub fn device_config(name: Option<String>) -> Result<DeviceConfig, String> {
 /// needs to drain and analyze it.
 struct BuiltStream {
     stream: cpal::Stream,
+    /// ASIO only: a silent output stream opened on the same device. Line 6 (and
+    /// other) ASIO drivers won't run an input-only `ASIOCreateBuffers` — no
+    /// callbacks fire and disposing the stream access-violates — but creating
+    /// input and output buffers together works. Kept alive and played/stopped
+    /// alongside the input stream. `None` on every non-ASIO path.
+    output_stream: Option<cpal::Stream>,
     consumer: ringbuf::HeapCons<f32>,
     /// Samples dropped on ring overrun, tallied lock-free by the realtime
     /// callback and logged off the realtime thread by the engine.
@@ -583,6 +589,67 @@ struct BuiltStream {
     sample_rate: u32,
     sel: Vec<usize>,
     device_channels: usize,
+}
+
+/// Whether a device id targets the ASIO host.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn is_asio_id(id: &Option<String>) -> bool {
+    id.as_deref().is_some_and(|s| s.starts_with(ASIO_ID_PREFIX))
+}
+
+/// Build a silent output stream on an ASIO `device` (see
+/// `BuiltStream::output_stream` for why it's needed). The realtime output
+/// callback only fills its buffer with silence — no allocation or locking.
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn build_silent_output(
+    device: &cpal::Device,
+    dev_name: &str,
+    rate: u32,
+) -> Result<cpal::Stream, String> {
+    let default = device
+        .default_output_config()
+        .map_err(|e| explain_default_config_error(dev_name, e))?;
+    let config = cpal::StreamConfig {
+        channels: default.channels(),
+        sample_rate: rate,
+        buffer_size: cpal::BufferSize::Default,
+    };
+    let on_error = |err: cpal::Error| eprintln!("asio output stream error: {err}");
+    let stream = match default.sample_format() {
+        cpal::SampleFormat::I24 => device.build_output_stream(
+            config,
+            |data: &mut [cpal::I24], _: &cpal::OutputCallbackInfo| {
+                data.fill(cpal::I24::new(0).unwrap_or_default());
+            },
+            on_error,
+            None,
+        ),
+        cpal::SampleFormat::F32 => device.build_output_stream(
+            config,
+            |data: &mut [f32], _: &cpal::OutputCallbackInfo| data.fill(0.0),
+            on_error,
+            None,
+        ),
+        cpal::SampleFormat::I32 => device.build_output_stream(
+            config,
+            |data: &mut [i32], _: &cpal::OutputCallbackInfo| data.fill(0),
+            on_error,
+            None,
+        ),
+        cpal::SampleFormat::I16 => device.build_output_stream(
+            config,
+            |data: &mut [i16], _: &cpal::OutputCallbackInfo| data.fill(0),
+            on_error,
+            None,
+        ),
+        other => {
+            return Err(format!(
+                "“{dev_name}” uses an ASIO output format MeterMaid can’t drive ({other:?})."
+            ))
+        }
+    }
+    .map_err(|e| explain_build_error(dev_name, e))?;
+    Ok(stream)
 }
 
 fn build_stream(
@@ -642,6 +709,18 @@ fn build_stream(
         eprintln!("audio stream error: {err}");
         let _ = err_app.emit("stream-error", err.to_string());
     };
+
+    // ASIO needs input and output buffers created together (see
+    // BuiltStream::output_stream). Build the silent output stream first so it's
+    // part of the same ASIOCreateBuffers as the input stream below.
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    let output_stream = if is_asio_id(&device_name) {
+        Some(build_silent_output(&device, &dev_name, rate)?)
+    } else {
+        None
+    };
+    #[cfg(not(all(windows, target_arch = "x86_64")))]
+    let output_stream: Option<cpal::Stream> = None;
 
     let cb_dropped = Arc::clone(&dropped);
     let stream = match sample_format {
@@ -726,6 +805,7 @@ fn build_stream(
 
     Ok(BuiltStream {
         stream,
+        output_stream,
         consumer,
         dropped,
         info: StreamInfo {
@@ -780,10 +860,20 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
                             let _ = reply.send(Err(e));
                             continue;
                         }
+                        // Start the paired ASIO output stream (if any) before the
+                        // input, mirroring the order the driver tolerates.
+                        if let Some(out) = &built.output_stream {
+                            if let Err(e) = out.play() {
+                                analyzer.shutdown();
+                                let _ = reply.send(Err(explain_play_error(&dev_name, e)));
+                                continue;
+                            }
+                        }
                         match built.stream.play() {
                             Ok(()) => {
                                 active = Some(ActiveStream {
                                     stream: built.stream,
+                                    output_stream: built.output_stream,
                                     consumer: built.consumer,
                                     dropped: built.dropped,
                                 });
@@ -833,9 +923,15 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
 /// An active capture: the cpal stream (kept alive to keep the device running),
 /// its SPSC consumer, and the lock-free dropped-sample counter.
 struct ActiveStream {
-    /// Held only for its `Drop`: dropping the stream stops the device.
+    /// Held only for its `Drop`: dropping the stream stops the device. The input
+    /// stream is dropped before the output stream (field order) to match the
+    /// teardown order ASIO tolerates.
     #[allow(dead_code)]
     stream: cpal::Stream,
+    /// ASIO only: the paired silent output stream (see `BuiltStream`). Held for
+    /// its `Drop`; `None` on non-ASIO paths.
+    #[allow(dead_code)]
+    output_stream: Option<cpal::Stream>,
     consumer: ringbuf::HeapCons<f32>,
     dropped: Arc<AtomicU64>,
 }
@@ -1266,5 +1362,74 @@ see per-device errors above"
             find_device(&Some(d.id.clone()))
                 .unwrap_or_else(|e| panic!("find_device failed for {:?}: {e}", d.id));
         }
+    }
+
+    // Regression test for the ASIO input-only failure: this driver delivers no
+    // callbacks and access-violates on dispose unless an output stream is created
+    // alongside the input (one ASIOCreateBuffers for both directions) — which is
+    // exactly what build_stream does for ASIO devices. Verifies the input+output
+    // pairing actually captures and tears down cleanly. Requires the device. Run:
+    //   cargo test asio_input_output_captures -- --ignored --nocapture
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    #[ignore]
+    fn asio_input_output_captures() {
+        let _asio = ASIO_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let host = asio_host().expect("asio host");
+        let device = host
+            .input_devices()
+            .expect("input devices")
+            .next()
+            .expect("an asio input device");
+        let in_default = device.default_input_config().expect("default input config");
+        let out_default = device
+            .default_output_config()
+            .expect("default output config");
+        let rate = in_default.sample_rate();
+        let in_config = cpal::StreamConfig {
+            channels: in_default.channels(),
+            sample_rate: rate,
+            buffer_size: cpal::BufferSize::Default,
+        };
+        let out_config = cpal::StreamConfig {
+            channels: out_default.channels(),
+            sample_rate: rate,
+            buffer_size: cpal::BufferSize::Default,
+        };
+
+        // Silent output stream first, then the input — same order build_stream uses.
+        let out_stream = device
+            .build_output_stream(
+                out_config,
+                |data: &mut [cpal::I24], _: &cpal::OutputCallbackInfo| {
+                    data.fill(cpal::I24::new(0).unwrap_or_default());
+                },
+                |e| eprintln!("output stream error: {e}"),
+                None,
+            )
+            .expect("build_output_stream");
+
+        let count = Arc::new(AtomicU64::new(0));
+        let cb_count = Arc::clone(&count);
+        let in_stream = device
+            .build_input_stream(
+                in_config,
+                move |data: &[cpal::I24], _: &cpal::InputCallbackInfo| {
+                    cb_count.fetch_add(data.len() as u64, Ordering::Relaxed);
+                },
+                |e| eprintln!("input stream error: {e}"),
+                None,
+            )
+            .expect("build_input_stream");
+
+        out_stream.play().expect("play output");
+        in_stream.play().expect("play input");
+        std::thread::sleep(Duration::from_millis(500));
+        drop(in_stream);
+        drop(out_stream);
+
+        let n = count.load(Ordering::Relaxed);
+        eprintln!("captured {n} samples across callbacks");
+        assert!(n > 0, "ASIO input+output stream produced no callbacks");
     }
 }
