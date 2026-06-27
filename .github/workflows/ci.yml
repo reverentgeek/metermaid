@@ -127,7 +127,8 @@ jobs:
         working-directory: src-tauri
 
   # Website build + Playwright suite. Runs only when site/ changed, in the
-  # Node version the site actually deploys on (Netlify uses Node 22).
+  # Node version the site actually deploys on (Netlify NODE_VERSION in
+  # netlify.toml).
   build-site:
     needs: changes
     if: ${{ needs.changes.outputs.site == 'true' }}
@@ -142,7 +143,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           cache-dependency-path: site/pnpm-lock.yaml
 
