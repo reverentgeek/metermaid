@@ -36,6 +36,8 @@ test.describe( "Accessibility", () => {
 			"Screenshot",
 			"Features",
 			"Download",
+			"Getting started",
+			"Updates",
 			"Feedback",
 		];
 		for ( const label of expectedLabels ) {
