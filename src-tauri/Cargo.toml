@@ -47,7 +47,18 @@ tauri-plugin-updater = "2"
 # already in the tree transitively; `block2` backs the completion handler.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-av-foundation = { version = "0.3", features = ["AVCaptureDevice", "AVMediaFormat"] }
+# `default-features = false` is load-bearing: the default feature set pulls in
+# `objc2-avf-audio`, which links `AVFAudio.framework` — a framework that only
+# exists on macOS 11+. Linking it breaks the build on Catalina (10.15), exactly
+# the OS this fix targets. `AVCaptureDevice` (the permission API) and
+# `AVMediaFormat` (the `AVMediaTypeAudio` constant) need only AVFoundation,
+# which has shipped since 10.7.
+objc2-av-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "AVCaptureDevice",
+    "AVMediaFormat",
+] }
 block2 = "0.6"
 
 # ASIO host — x64 Windows only. ASIO exposes the device's native channel count
