@@ -16,6 +16,10 @@
 
 # What's new
 
+## 0.4.2 2026-06-28
+
+Fixed MeterMaid on older Macs running macOS Catalina (10.15). It now asks for microphone permission on first launch and correctly lists your input devices, and all the controls work as expected.
+
 ## 0.4.0 2026-06-27
 
 Multichannel metering on Windows. If you run a multichannel interface like a Line 6 Helix over ASIO, MeterMaid can now read each channel on its own (Ch 1 through 8) instead of just a single mixed signal.
