@@ -38,6 +38,18 @@ ringbuf = "0.4"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 
+# macOS microphone permission. cpal talks to the CoreAudio HAL, which is *not*
+# the TCC-aware API: it never raises the OS microphone prompt, and on older
+# macOS (e.g. Catalina) the HAL even returns an *empty* input-device list until
+# access is granted — deadlocking the picker (no devices → can't Start → no
+# prompt → no devices). We break that by explicitly requesting access through
+# AVFoundation (`AVCaptureDevice`), which *does* trigger the prompt. `objc2` is
+# already in the tree transitively; `block2` backs the completion handler.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-av-foundation = { version = "0.3", features = ["AVCaptureDevice", "AVMediaFormat"] }
+block2 = "0.6"
+
 # ASIO host — x64 Windows only. ASIO exposes the device's native channel count
 # (WASAPI shared mode reports only the endpoint default, often mono). There is
 # no ARM64 ASIO SDK, so this feature is scoped to x86_64. Building it requires

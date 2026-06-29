@@ -1,4 +1,6 @@
 mod audio;
+#[cfg(target_os = "macos")]
+mod mac_permissions;
 
 use std::sync::mpsc::{self, Sender, SyncSender};
 
@@ -229,6 +231,12 @@ pub fn run() {
     builder
         .manage(AppState { tx })
         .setup(move |app| {
+            // Ask for microphone access up front so the device picker can
+            // populate (cpal's CoreAudio HAL never raises the prompt itself, and
+            // on older macOS won't even list inputs until access is granted).
+            #[cfg(target_os = "macos")]
+            mac_permissions::request_microphone_access();
+
             let handle = app.handle().clone();
             std::thread::spawn(move || audio::engine_loop(rx, handle));
             Ok(())
