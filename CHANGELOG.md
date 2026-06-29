@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-06-28
+
+### Fixed
+
+- **macOS: input devices not detected and no microphone prompt.** MeterMaid now explicitly requests microphone access via AVFoundation (`AVCaptureDevice`) at launch. cpal's CoreAudio HAL never triggers the OS permission prompt on its own, and on older macOS (e.g. Catalina) the HAL returns an empty input-device list until access is granted — leaving the picker stuck with no devices and no way to grant permission. Requesting access up front raises the prompt; once granted, the device picker repopulates. ([#31](https://github.com/reverentgeek/metermaid/issues/31))
+- **Older macOS (Catalina): blank/non-functional UI.** Set the Vite build target to `safari13` so the frontend bundle is transpiled for the older system WebKit shipped on macOS 10.15. Previously the bundle used syntax too new for that WebKit to parse, so the JavaScript silently never executed — the window rendered but every control (device/channel/rate pickers, buttons) was dead. ([#31](https://github.com/reverentgeek/metermaid/issues/31))
+
 ## [0.4.1] - 2026-06-27
 
 ### Internal
