@@ -9,6 +9,12 @@ export default defineConfig(async () => ({
 	//
 	// 1. prevent Vite from obscuring rust errors
 	clearScreen: false,
+	// Transpile the bundle down for older system WebKit (Catalina ships Safari
+	// 13). Vite's default target is ~Safari 14, whose output an older WebKit may
+	// fail to even parse — leaving the whole module silently non-executing.
+	build: {
+		target: "safari13",
+	},
 	// 2. tauri expects a fixed port, fail if that port is not available
 	server: {
 		port: 1420,
