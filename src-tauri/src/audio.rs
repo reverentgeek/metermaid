@@ -677,6 +677,44 @@ fn push_len(available: usize, vacant: usize, stride: usize) -> usize {
     n - n % stride.max(1)
 }
 
+/// Build an input stream whose samples arrive in a non-f32 PCM format. The
+/// realtime callback converts each sample to f32 into a scratch buffer
+/// pre-sized to the ring capacity (one callback can't exceed a full ring's
+/// worth, so it never reallocates) and pushes whole frames into the SPSC ring.
+/// One generic implementation covers every integer/f64 format a backend may
+/// report, so an unusual driver default (e.g. ALSA's S32_LE) doesn't need its
+/// own hand-written arm.
+fn build_converting_input_stream<T>(
+    device: &cpal::Device,
+    config: cpal::StreamConfig,
+    mut producer: ringbuf::HeapProd<f32>,
+    dropped: Arc<AtomicU64>,
+    stride: usize,
+    cap: usize,
+    on_error: impl FnMut(cpal::Error) + Send + 'static,
+) -> Result<cpal::Stream, cpal::Error>
+where
+    T: cpal::SizedSample + Send + 'static,
+    f32: cpal::FromSample<T>,
+{
+    let mut scratch = vec![0.0f32; cap];
+    device.build_input_stream(
+        config,
+        move |data: &[T], _: &cpal::InputCallbackInfo| {
+            let n = push_len(data.len().min(scratch.len()), producer.vacant_len(), stride);
+            for (dst, &s) in scratch[..n].iter_mut().zip(data) {
+                *dst = f32::from_sample(s);
+            }
+            let _ = producer.push_slice(&scratch[..n]);
+            if n < data.len() {
+                dropped.fetch_add((data.len() - n) as u64, Ordering::Relaxed);
+            }
+        },
+        on_error,
+        None,
+    )
+}
+
 fn build_stream(
     app: &AppHandle,
     device_name: Option<String>,
@@ -763,66 +801,46 @@ fn build_stream(
             on_error,
             None,
         ),
-        cpal::SampleFormat::I16 => {
-            // Pre-sized to the ring capacity so the realtime callback converts
-            // in place and never reallocates (one callback can't exceed a full
-            // ring's worth of samples).
-            let mut scratch = vec![0.0f32; cap];
-            device.build_input_stream(
-                config,
-                move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    let n = push_len(data.len().min(scratch.len()), producer.vacant_len(), stride);
-                    for (dst, &s) in scratch[..n].iter_mut().zip(data) {
-                        *dst = s as f32 / 32768.0;
-                    }
-                    let _ = producer.push_slice(&scratch[..n]);
-                    if n < data.len() {
-                        cb_dropped.fetch_add((data.len() - n) as u64, Ordering::Relaxed);
-                    }
-                },
-                on_error,
-                None,
-            )
-        }
-        cpal::SampleFormat::U16 => {
-            let mut scratch = vec![0.0f32; cap];
-            device.build_input_stream(
-                config,
-                move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                    let n = push_len(data.len().min(scratch.len()), producer.vacant_len(), stride);
-                    for (dst, &s) in scratch[..n].iter_mut().zip(data) {
-                        *dst = (s as f32 - 32768.0) / 32768.0;
-                    }
-                    let _ = producer.push_slice(&scratch[..n]);
-                    if n < data.len() {
-                        cb_dropped.fetch_add((data.len() - n) as u64, Ordering::Relaxed);
-                    }
-                },
-                on_error,
-                None,
-            )
-        }
-        // 24-bit packed PCM — what pro-audio ASIO drivers (e.g. the Line 6
-        // Helix) report. cpal stores I24 in a 4-byte container; `from_sample`
-        // does the scaled conversion to f32.
-        cpal::SampleFormat::I24 => {
-            let mut scratch = vec![0.0f32; cap];
-            device.build_input_stream(
-                config,
-                move |data: &[cpal::I24], _: &cpal::InputCallbackInfo| {
-                    let n = push_len(data.len().min(scratch.len()), producer.vacant_len(), stride);
-                    for (dst, &s) in scratch[..n].iter_mut().zip(data) {
-                        *dst = f32::from_sample(s);
-                    }
-                    let _ = producer.push_slice(&scratch[..n]);
-                    if n < data.len() {
-                        cb_dropped.fetch_add((data.len() - n) as u64, Ordering::Relaxed);
-                    }
-                },
-                on_error,
-                None,
-            )
-        }
+        // Every other PCM format converts to f32 through the shared scratch
+        // path. Which one arrives is the backend's choice, not the user's:
+        // ASIO drivers (e.g. the Line 6 Helix) report I24, ALSA typically
+        // reports S32_LE (I32) for class-compliant USB interfaces, older
+        // hardware I16/U16.
+        cpal::SampleFormat::I8 => build_converting_input_stream::<i8>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::I16 => build_converting_input_stream::<i16>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::I24 => build_converting_input_stream::<cpal::I24>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::I32 => build_converting_input_stream::<i32>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::I64 => build_converting_input_stream::<i64>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::U8 => build_converting_input_stream::<u8>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::U16 => build_converting_input_stream::<u16>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::U24 => build_converting_input_stream::<cpal::U24>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::U32 => build_converting_input_stream::<u32>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::U64 => build_converting_input_stream::<u64>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        cpal::SampleFormat::F64 => build_converting_input_stream::<f64>(
+            &device, config, producer, cb_dropped, stride, cap, on_error,
+        ),
+        // DSD bitstreams (DsdU8/U16/U32) aren't PCM samples; there is no
+        // meaningful per-sample conversion.
         other => {
             return Err(format!(
                 "“{dev_name}” uses an audio format MeterMaid can’t read ({other:?})."
@@ -1189,6 +1207,32 @@ mod tests {
                                             // Already-aligned clamp stays aligned; zero stride must not panic.
         assert_eq!(push_len(960, 96, 6), 96);
         assert_eq!(push_len(960, 100, 0), 100);
+    }
+
+    // --- Sample-format conversion --------------------------------------------
+
+    #[test]
+    fn converted_sample_formats_map_full_scale_to_unity() {
+        // The converting input path relies on cpal's `from_sample` mapping
+        // each PCM format's range onto ±1.0 with the format's origin at 0.0.
+        // Pin those semantics for the formats real backends report: I32 is
+        // ALSA's S32_LE (issue #33, Helix Stadium on Linux), I24 is what ASIO
+        // drivers deliver, I16/U16 come from older hardware.
+        assert_eq!(f32::from_sample(i32::MIN), -1.0);
+        assert_eq!(f32::from_sample(0i32), 0.0);
+        assert_eq!(f32::from_sample(1i32 << 30), 0.5);
+        assert_eq!(f32::from_sample(i16::MIN), -1.0);
+        assert_eq!(f32::from_sample(1i16 << 14), 0.5);
+        assert_eq!(f32::from_sample(u16::MIN), -1.0);
+        assert_eq!(f32::from_sample(1u16 << 15), 0.0);
+        assert_eq!(f32::from_sample(cpal::I24::new(-(1 << 23)).unwrap()), -1.0);
+        assert_eq!(f32::from_sample(cpal::I24::new(1 << 22).unwrap()), 0.5);
+        assert_eq!(f32::from_sample(cpal::U24::new(1 << 23).unwrap()), 0.0);
+        assert_eq!(f32::from_sample(1u32 << 31), 0.0);
+        assert_eq!(f32::from_sample(3u32 << 30), 0.5);
+        assert_eq!(f32::from_sample(i8::MIN), -1.0);
+        assert_eq!(f32::from_sample(u8::MIN), -1.0);
+        assert_eq!(f32::from_sample(0.25f64), 0.25);
     }
 
     // --- Loudness (golden) --------------------------------------------------
