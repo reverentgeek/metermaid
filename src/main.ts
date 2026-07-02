@@ -585,8 +585,10 @@ async function stop() {
 	setStatus("stopped", "idle");
 }
 
-// The audio engine emits this when the OS reports a fault on the active stream
-// (e.g. the device is unplugged mid-capture). Tear down and surface why.
+// The audio engine emits this when the OS reports a fault that ends the
+// active stream (e.g. the device is unplugged mid-capture) — recoverable
+// advisories like buffer over/underruns are filtered out engine-side
+// (is_fatal_stream_error). Tear down and surface why.
 function handleStreamError(message: string) {
 	if (!running) return;
 	void invoke("stop_capture").catch(() => {});
@@ -933,6 +935,21 @@ window.addEventListener("DOMContentLoaded", async () => {
 				resetMeasurement();
 			}
 		}
+	});
+
+	// Mouse clicks must not park focus on a button: Linux/Windows webviews
+	// focus a clicked button (macOS WebKit doesn't), and the Space guard above
+	// defers to focused BUTTONs — so after clicking, say, a target stepper,
+	// Space kept clicking the stepper instead of resetting. Focus-on-click is
+	// the default action of mousedown; preventing it (and dropping focus from
+	// wherever it was, as the click normally would) keeps Space owned by Reset
+	// after any pointer interaction, while Tab + Space/Enter keyboard
+	// activation of buttons is untouched.
+	document.addEventListener("mousedown", (e) => {
+		if (!(e.target as HTMLElement | null)?.closest("button")) return;
+		e.preventDefault();
+		const active = document.activeElement;
+		if (active instanceof HTMLElement) active.blur();
 	});
 
 	errorDismiss.addEventListener("click", hideError);

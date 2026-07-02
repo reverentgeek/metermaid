@@ -16,6 +16,13 @@
 
 # What's new
 
+## 0.4.5 2026-07-02
+
+Fixes for Linux and Windows.
+
+- Fixed a Linux bug where a brief audio hiccup could stop metering with a "buffer underrun or overrun" error. These hiccups are harmless and the audio keeps flowing, so MeterMaid now rides through them and keeps metering. It only stops when something is really wrong, like the interface being unplugged.
+- Fixed the spacebar Reset shortcut on Linux and Windows. After clicking a button, such as the Target nudge arrows, pressing space could trigger that button again instead of resetting the measurement. Space now always resets while metering.
+
 ## 0.4.4 2026-07-01
 
 Fixes for Linux, especially with USB audio interfaces like the Line 6 Helix Stadium.

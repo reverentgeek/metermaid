@@ -29,4 +29,12 @@ ignore = [
     "RUSTSEC-2025-0081", # unic-char-property
     "RUSTSEC-2025-0098", # unic-ucd-version
     "RUSTSEC-2025-0100", # unic-ucd-ident
+    # quick-xml < 0.41 DoS on *untrusted* XML (quadratic attribute-name check;
+    # unbounded namespace allocation). Only reachable through `plist` (via
+    # tauri/tauri-utils), which parses the app's own config/bundle plists —
+    # never untrusted input. plist 1.9.0 (latest) still pins quick-xml ^0.39,
+    # so no dependency bump can pick up the fix. Remove both when a plist
+    # release allows quick-xml >= 0.41.
+    "RUSTSEC-2026-0194", # quick-xml
+    "RUSTSEC-2026-0195", # quick-xml
 ]
