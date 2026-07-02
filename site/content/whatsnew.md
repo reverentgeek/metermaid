@@ -16,6 +16,13 @@
 
 # What's new
 
+## 0.4.4 2026-07-01
+
+Fixes for Linux, especially with USB audio interfaces like the Line 6 Helix Stadium.
+
+- MeterMaid previously could not read the 32 bit audio many USB interfaces send on Linux and refused to start. It now handles every common audio format an interface can deliver.
+- The device picker no longer lists the same interface several times over.
+
 ## 0.4.3 2026-07-01
 
 Reliability fixes, especially for multichannel interfaces.
