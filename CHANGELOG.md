@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-07-01
+
+### Fixed
+
+- **Channel misalignment when metering multichannel devices.** The engine drained the capture ring in fixed 8192-sample chunks, but the analyzer drops a trailing partial frame — so on devices whose channel count doesn't divide 8192 (6-, 10-, 12-, or 18-channel interfaces, on any platform) every full chunk rotated the channel alignment of everything drained after it, and the meter silently blended the wrong channels. The drain buffer is now sized per stream to a whole number of interleaved frames, covered by a 6-channel golden-signal regression test. Mono, stereo, 4-, and 8-channel devices were unaffected.
+
 ## [0.4.2] - 2026-06-28
 
 ### Fixed

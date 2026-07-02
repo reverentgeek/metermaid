@@ -16,6 +16,10 @@
 
 # What's new
 
+## 0.4.3 2026-07-01
+
+Fixed a bug where metering an interface with certain channel counts (6, 10, 12, or 18 inputs) could quietly drift onto the wrong channels while capturing. If you meter a multichannel interface, this update is worth taking. Interfaces with 1, 2, 4, or 8 inputs were not affected.
+
 ## 0.4.2 2026-06-28
 
 Fixed MeterMaid on older Macs running macOS Catalina (10.15). It now asks for microphone permission on first launch and correctly lists your input devices, and all the controls work as expected.
