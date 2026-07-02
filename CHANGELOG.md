@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Linux: a momentary buffer over/underrun no longer stops the meter.** ALSA reports a capture xrun through cpal's error callback, but cpal recovers the stream on its own (re-prepare + restart) — the stream is alive again milliseconds later. MeterMaid treated every stream error as fatal, so a single xrun (routine on machines without realtime scheduling, e.g. cloud VMs) tore down capture with "A buffer underrun or overrun occurred." Stream errors are now classified by `cpal::ErrorKind`: recoverable advisories (`Xrun`, `DeviceChanged`, `RealtimeDenied`) are logged and metering continues; only errors that actually end the stream (device disconnected, stream invalidated, unclassified backend faults) still stop capture and surface in the UI.
+- **Linux/Windows: the last-clicked button could hijack the Space shortcut.** Those webviews leave focus on a clicked button (macOS WebKit doesn't), and the Space-to-Reset shortcut defers to focused controls — so after nudging the LUFS target with the stepper buttons, Space kept stepping the target instead of resetting the measurement. Mouse clicks on buttons no longer move focus (the `mousedown` default action is prevented and the previously focused control is blurred, as the click would have); keyboard behavior — Tab focus, Space/Enter activation — is unchanged.
 
 ## [0.4.4] - 2026-07-01
 

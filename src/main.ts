@@ -937,6 +937,21 @@ window.addEventListener("DOMContentLoaded", async () => {
 		}
 	});
 
+	// Mouse clicks must not park focus on a button: Linux/Windows webviews
+	// focus a clicked button (macOS WebKit doesn't), and the Space guard above
+	// defers to focused BUTTONs — so after clicking, say, a target stepper,
+	// Space kept clicking the stepper instead of resetting. Focus-on-click is
+	// the default action of mousedown; preventing it (and dropping focus from
+	// wherever it was, as the click normally would) keeps Space owned by Reset
+	// after any pointer interaction, while Tab + Space/Enter keyboard
+	// activation of buttons is untouched.
+	document.addEventListener("mousedown", (e) => {
+		if (!(e.target as HTMLElement | null)?.closest("button")) return;
+		e.preventDefault();
+		const active = document.activeElement;
+		if (active instanceof HTMLElement) active.blur();
+	});
+
 	errorDismiss.addEventListener("click", hideError);
 	errorCopy.addEventListener("click", async () => {
 		try {
