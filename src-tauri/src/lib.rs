@@ -12,17 +12,24 @@ struct AppState {
     tx: Sender<Command>,
 }
 
-#[tauri::command]
+// The four commands below are declared `(async)` so Tauri runs them on a
+// background thread pool: plain sync commands run on the main thread, and
+// these all block — device enumeration/config can load ASIO drivers (seconds)
+// and the capture commands wait on the engine thread's reply — which would
+// visibly freeze the webview meanwhile. `reset_integrated` and `asio_build`
+// stay sync: they never block.
+
+#[tauri::command(async)]
 fn list_devices(include_asio: bool) -> Result<Vec<DeviceInfo>, String> {
     audio::list_input_devices(include_asio)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_device_config(device: Option<String>) -> Result<DeviceConfig, String> {
     audio::device_config(device)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn start_capture(
     device: Option<String>,
     sample_rate: Option<u32>,
@@ -42,7 +49,7 @@ fn start_capture(
     rx.recv().map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn stop_capture(state: State<AppState>) -> Result<(), String> {
     let (reply, rx): (SyncSender<()>, _) = mpsc::sync_channel(1);
     state

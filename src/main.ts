@@ -46,6 +46,7 @@ interface Metrics {
 	spectrum: number[];
 	sampleRate: number;
 	channels: number;
+	generation: number;
 }
 
 const LOUDNESS_FLOOR = -70;
@@ -67,6 +68,14 @@ let displayedPeak = PEAK_FLOOR; // live true-peak with release ballistics
 let lastPeakTs = 0; // timestamp of the last true-peak ballistics update (ms)
 let lastFrameTs = 0; // timestamp of the last spectrum frame (ms)
 let clipLatched = false;
+// Measurement generation of the most recent meter-update. The engine bumps it
+// on every stream (re)configure and Reset, so metrics computed *before* a
+// Reset we requested are identifiable while still in flight.
+let lastGeneration = 0;
+// Clip latching is suppressed for metrics at or below this generation: after a
+// Reset (or a fresh Start), a stale frame still in flight carries the old held
+// true-peak max, which would instantly re-latch the clip light just cleared.
+let latchHoldGeneration = -1;
 
 const $ = <T extends HTMLElement>(id: string) =>
 	document.getElementById(id) as T;
@@ -510,8 +519,12 @@ async function start() {
 		});
 		running = true;
 		clipLatched = false;
+		latchHoldGeneration = lastGeneration;
 		displayedPeak = PEAK_FLOOR;
 		lastPeakTs = 0;
+		// Drop the previous session's spectrum peak-hold so the new capture
+		// starts clean rather than under a stale, decaying peak line.
+		peaks = [];
 		// Reset becomes the in-session primary; Stop is a quiet secondary.
 		startBtn.hidden = true;
 		resetBtn.hidden = false;
@@ -599,9 +612,15 @@ function updateReadouts(m: Metrics) {
 	$("truePeak").textContent = fmt(displayedPeak, PEAK_FLOOR);
 	$("truePeakMax").textContent = fmt(m.truePeakMaxDb, PEAK_FLOOR);
 
-	// Clip indicator latches once the held max crosses the ceiling.
+	// Clip indicator latches once the held max crosses the ceiling — but only
+	// for metrics computed after the latest Reset/Start (see latchHoldGeneration).
+	lastGeneration = m.generation;
 	const ceiling = parseFloat(ceilingInput.value);
-	if (Number.isFinite(ceiling) && m.truePeakMaxDb >= ceiling)
+	if (
+		m.generation > latchHoldGeneration &&
+		Number.isFinite(ceiling) &&
+		m.truePeakMaxDb >= ceiling
+	)
 		clipLatched = true;
 	tpCard.classList.toggle("clipping", clipLatched);
 	clipFlag.classList.toggle("on", clipLatched);
@@ -815,6 +834,9 @@ function resetMeasurement() {
 	displayedPeak = PEAK_FLOOR;
 	lastPeakTs = 0;
 	clipLatched = false;
+	// Suppress clip latching for frames from before this reset; the engine
+	// bumps the generation when it processes it (see latchHoldGeneration).
+	latchHoldGeneration = lastGeneration;
 	tpCard.classList.remove("clipping");
 	clipFlag.classList.remove("on");
 	invoke("reset_integrated").catch((e) => reportError("Reset measurement", e));

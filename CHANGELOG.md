@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-07-01
+
+### Fixed
+
+- **Channel misalignment when metering multichannel devices.** The engine drained the capture ring in fixed 8192-sample chunks, but the analyzer drops a trailing partial frame — so on devices whose channel count doesn't divide 8192 (6-, 10-, 12-, or 18-channel interfaces, on any platform) every full chunk rotated the channel alignment of everything drained after it, and the meter silently blended the wrong channels. The drain buffer is now sized per stream to a whole number of interleaved frames, covered by a 6-channel golden-signal regression test. Mono, stereo, 4-, and 8-channel devices were unaffected.
+- **Channel misalignment after a capture-ring overrun.** The realtime callback's `push_slice` could push a partial frame when the ring was nearly full, permanently rotating channel alignment even after the overrun cleared. The callback now clamps each push to the ring's free space rounded down to a whole frame (still lock- and allocation-free) and tallies the remainder as dropped.
+- **Stale spectrum peak-hold across capture sessions.** Starting a new capture no longer shows the previous session's decaying peak-hold line over the fresh spectrum.
+- **Clip light could re-latch immediately after Reset.** A `meter-update` already in flight when Reset was pressed could still carry the old held true-peak max and instantly re-latch the clip indicator. `Metrics` now carries a measurement `generation` (bumped by the engine on every stream configure and Reset) and the UI ignores clip latching for frames from before the reset it requested.
+
+### Changed
+
+- **Device listing and capture start/stop no longer run on the webview's main thread.** These Tauri commands block — enumerating devices can load ASIO drivers (seconds) and start/stop waits on the audio engine's reply — which could visibly freeze the UI. They are now declared `#[tauri::command(async)]` and run on a background thread pool.
+
 ## [0.4.2] - 2026-06-28
 
 ### Fixed

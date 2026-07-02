@@ -16,6 +16,14 @@
 
 # What's new
 
+## 0.4.3 2026-07-01
+
+Reliability fixes, especially for multichannel interfaces.
+
+- Fixed a bug where metering an interface with certain channel counts (6, 10, 12, or 18 inputs) could quietly drift onto the wrong channels while capturing. If you meter a multichannel interface, this update is worth taking. Interfaces with 1, 2, 4, or 8 inputs were not affected.
+- The app no longer freezes for a moment while it looks up your devices or starts and stops metering. This was most noticeable with ASIO interfaces on Windows.
+- The spectrum's peak line now starts fresh each time you begin metering instead of carrying over from the last session, and the clip light no longer flashes back on right after you reset.
+
 ## 0.4.2 2026-06-28
 
 Fixed MeterMaid on older Macs running macOS Catalina (10.15). It now asks for microphone permission on first launch and correctly lists your input devices, and all the controls work as expected.
