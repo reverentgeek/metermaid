@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Linux: "uses an audio format MeterMaid can't read (I32)" on class-compliant USB interfaces.** ALSA typically reports S32_LE (signed 32-bit) as the default input format for class-compliant USB audio devices — e.g. the Line 6 Helix Stadium — but the capture path only handled F32, I16, U16, and I24, so Start failed before a stream was built. Sample conversion is now a single generic, realtime-safe path covering every PCM format cpal can deliver (I8/I16/I24/I32/I64, U8/U16/U24/U32/U64, F64), with a unit test pinning the full-scale-to-±1.0 conversion semantics. Only the DSD bitstream formats remain unsupported. ([#33](https://github.com/reverentgeek/metermaid/issues/33))
+- **Linux: the same device no longer appears many times in the picker.** ALSA exposes one physical card as several PCM aliases (`sysdefault`, `front`, `plughw`, …) that share a description, so cpal listed the same name repeatedly. Device identity is the (host-qualified) id and `find_device` resolves an id to its first name match, so the duplicate rows were indistinguishable and all selected the same device anyway; the list now collapses entries that share an id, keeping the first. ([#33](https://github.com/reverentgeek/metermaid/issues/33))
 
 ## [0.4.3] - 2026-07-01
 

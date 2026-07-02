@@ -520,7 +520,21 @@ pub fn list_input_devices(include_asio: bool) -> Result<Vec<DeviceInfo>, String>
         #[cfg(all(windows, target_arch = "x86_64"))]
         append_asio_devices(&mut out);
     }
-    Ok(out)
+    Ok(dedup_devices(out))
+}
+
+/// Collapse entries that share a device id, keeping the first occurrence.
+/// ALSA surfaces one physical card as several PCM aliases (`sysdefault`,
+/// `front`, `plughw`, …) that share a description, so cpal lists the same
+/// name many times over. Device identity *is* the (host-qualified) id —
+/// `find_device` resolves an id to the first name match — so same-id rows
+/// are indistinguishable in the picker and collapsing them loses nothing.
+fn dedup_devices(devices: Vec<DeviceInfo>) -> Vec<DeviceInfo> {
+    let mut seen = BTreeSet::new();
+    devices
+        .into_iter()
+        .filter(|d| seen.insert(d.id.clone()))
+        .collect()
 }
 
 /// Append ASIO-host input devices (x64 Windows). Best-effort: a missing or flaky
@@ -1207,6 +1221,37 @@ mod tests {
                                             // Already-aligned clamp stays aligned; zero stride must not panic.
         assert_eq!(push_len(960, 96, 6), 96);
         assert_eq!(push_len(960, 100, 0), 100);
+    }
+
+    // --- Device listing -------------------------------------------------------
+
+    #[test]
+    fn duplicate_device_ids_are_collapsed() {
+        let mk = |id: &str, host: &str, is_default: bool| DeviceInfo {
+            id: id.to_string(),
+            name: id.trim_start_matches("asio:").to_string(),
+            host: host.to_string(),
+            is_default,
+        };
+        let out = dedup_devices(vec![
+            // ALSA-style aliases: one card listed once per PCM alias.
+            mk("Helix Stadium, USB Audio", "default", false),
+            mk("Helix Stadium, USB Audio", "default", false),
+            mk("HDA Intel PCH, ALC887-VD Analog", "default", true),
+            mk("Helix Stadium, USB Audio", "default", false),
+            // Same bare name under another host keeps its distinct id.
+            mk("asio:Helix Stadium, USB Audio", "asio", false),
+        ]);
+        assert_eq!(
+            out.iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                "Helix Stadium, USB Audio",
+                "HDA Intel PCH, ALC887-VD Analog",
+                "asio:Helix Stadium, USB Audio",
+            ]
+        );
+        // Order is preserved and the default flag survives on the kept row.
+        assert!(out[1].is_default);
     }
 
     // --- Sample-format conversion --------------------------------------------
