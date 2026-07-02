@@ -585,8 +585,10 @@ async function stop() {
 	setStatus("stopped", "idle");
 }
 
-// The audio engine emits this when the OS reports a fault on the active stream
-// (e.g. the device is unplugged mid-capture). Tear down and surface why.
+// The audio engine emits this when the OS reports a fault that ends the
+// active stream (e.g. the device is unplugged mid-capture) — recoverable
+// advisories like buffer over/underruns are filtered out engine-side
+// (is_fatal_stream_error). Tear down and surface why.
 function handleStreamError(message: string) {
 	if (!running) return;
 	void invoke("stop_capture").catch(() => {});

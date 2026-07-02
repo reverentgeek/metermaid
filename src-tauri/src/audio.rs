@@ -691,6 +691,21 @@ fn push_len(available: usize, vacant: usize, stride: usize) -> usize {
     n - n % stride.max(1)
 }
 
+/// Whether a stream error reported by cpal's error callback means the stream
+/// is dead and capture must be torn down. Some kinds are advisories on a
+/// stream that keeps running: after an `Xrun` the ALSA worker re-prepares and
+/// restarts the stream itself (common on machines without realtime
+/// scheduling, e.g. VMs), `DeviceChanged` means the OS already rerouted the
+/// stream, and `RealtimeDenied` only downgrades the audio thread's scheduling.
+/// Unknown kinds (`ErrorKind` is non-exhaustive) stay fatal so a genuinely
+/// dead stream is never left looking healthy.
+fn is_fatal_stream_error(kind: cpal::ErrorKind) -> bool {
+    !matches!(
+        kind,
+        cpal::ErrorKind::Xrun | cpal::ErrorKind::DeviceChanged | cpal::ErrorKind::RealtimeDenied
+    )
+}
+
 /// Build an input stream whose samples arrive in a non-f32 PCM format. The
 /// realtime callback converts each sample to f32 into a scratch buffer
 /// pre-sized to the ring capacity (one callback can't exceed a full ring's
@@ -780,11 +795,14 @@ fn build_stream(
 
     // cpal invokes this on its own thread when the device faults (e.g. it is
     // unplugged mid-capture). Forward it to the UI so the user sees a reason
-    // rather than a silently frozen meter.
+    // rather than a silently frozen meter — but only for faults that actually
+    // end the stream; advisory errors are logged and capture continues.
     let err_app = app.clone();
     let on_error = move |err: cpal::Error| {
         eprintln!("audio stream error: {err}");
-        let _ = err_app.emit("stream-error", err.to_string());
+        if is_fatal_stream_error(err.kind()) {
+            let _ = err_app.emit("stream-error", err.to_string());
+        }
     };
 
     // ASIO needs input and output buffers created together (see
@@ -1221,6 +1239,21 @@ mod tests {
                                             // Already-aligned clamp stays aligned; zero stride must not panic.
         assert_eq!(push_len(960, 96, 6), 96);
         assert_eq!(push_len(960, 100, 0), 100);
+    }
+
+    // --- Stream-error classification ------------------------------------------
+
+    #[test]
+    fn advisory_stream_errors_do_not_tear_down_capture() {
+        // cpal recovers from these itself; the stream keeps running.
+        assert!(!is_fatal_stream_error(cpal::ErrorKind::Xrun));
+        assert!(!is_fatal_stream_error(cpal::ErrorKind::DeviceChanged));
+        assert!(!is_fatal_stream_error(cpal::ErrorKind::RealtimeDenied));
+        // These end the stream (or leave it unusable) and must reach the UI.
+        assert!(is_fatal_stream_error(cpal::ErrorKind::DeviceNotAvailable));
+        assert!(is_fatal_stream_error(cpal::ErrorKind::StreamInvalidated));
+        assert!(is_fatal_stream_error(cpal::ErrorKind::BackendError));
+        assert!(is_fatal_stream_error(cpal::ErrorKind::Other));
     }
 
     // --- Device listing -------------------------------------------------------
