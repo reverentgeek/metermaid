@@ -40,7 +40,9 @@ const PEAK_FLOOR: f64 = -120.0;
 const EMIT_INTERVAL: Duration = Duration::from_millis(33);
 /// Sample rates offered in the UI when within a device's supported range.
 const CANDIDATE_RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
-/// Scratch size (samples) used to drain the SPSC ring on the engine thread.
+/// Upper bound (samples) on the scratch buffer used to drain the SPSC ring on
+/// the engine thread. The buffer is sized per stream via [`drain_chunk_len`]
+/// so a chunk always holds whole interleaved frames.
 const DRAIN_CHUNK: usize = 8192;
 
 /// Identity prefix marking an ASIO-host device. The default (WASAPI/CoreAudio/
@@ -819,6 +821,23 @@ fn build_stream(
     })
 }
 
+/// Largest whole-frame multiple of `device_channels` that fits in
+/// [`DRAIN_CHUNK`]. The drain buffer must hold whole interleaved frames:
+/// `Analyzer::process` ignores a trailing partial frame, so a chunk boundary
+/// that split a frame would rotate the channel alignment of every sample
+/// drained after it — 8192 is not a multiple of e.g. a 6- or 10-channel
+/// interface's frame size, and those devices fill more than one chunk per
+/// 33 ms tick. A degenerate channel count larger than `DRAIN_CHUNK` still
+/// gets one whole frame.
+fn drain_chunk_len(device_channels: usize) -> usize {
+    let ch = device_channels.max(1);
+    if ch >= DRAIN_CHUNK {
+        ch
+    } else {
+        DRAIN_CHUNK - DRAIN_CHUNK % ch
+    }
+}
+
 /// Engine thread: owns the (non-Send) cpal stream + the SPSC consumer + the
 /// `Analyzer`, services commands, and on a fixed cadence drains the ring and
 /// emits `meter-update` events while capturing.
@@ -871,6 +890,9 @@ pub fn engine_loop(rx: Receiver<Command>, app: AppHandle) {
                         }
                         match built.stream.play() {
                             Ok(()) => {
+                                // Size the drain buffer to whole frames for
+                                // this stream's channel count.
+                                drain.resize(drain_chunk_len(built.device_channels), 0.0);
                                 active = Some(ActiveStream {
                                     stream: built.stream,
                                     output_stream: built.output_stream,
@@ -1079,6 +1101,53 @@ mod tests {
         assert_eq!(a.mono_ring.len(), 8);
         for &s in &a.mono_ring {
             assert!((s - 0.5).abs() < 1e-6, "expected 0.5 downmix, got {s}");
+        }
+    }
+
+    // --- Drain chunking ------------------------------------------------------
+
+    #[test]
+    fn drain_chunk_len_is_whole_frames() {
+        for ch in 1..=32 {
+            let len = drain_chunk_len(ch);
+            assert_eq!(len % ch, 0, "chunk not frame-aligned for {ch} channels");
+            assert!(len > 0 && len <= DRAIN_CHUNK);
+        }
+        // A zero channel count must not panic or return an empty chunk.
+        assert_eq!(drain_chunk_len(0), DRAIN_CHUNK);
+        // Degenerate: more channels than DRAIN_CHUNK still yields one whole frame.
+        assert_eq!(drain_chunk_len(DRAIN_CHUNK + 1), DRAIN_CHUNK + 1);
+    }
+
+    // Regression test for the multichannel drain-alignment bug: the engine used
+    // to drain the ring in fixed 8192-sample chunks, but 8192 isn't a multiple
+    // of a 6-channel frame and `process` drops a trailing partial frame — so
+    // every full chunk rotated the channel alignment of everything after it.
+    #[test]
+    fn chunked_draining_preserves_channel_alignment() {
+        let stride = 6; // 6 does not divide 8192, so a naive chunk splits a frame
+        let mut a = analyzer(48_000, stride, vec![2]);
+
+        // Each channel carries a distinct constant so any rotation is visible.
+        let frames = 4000; // more than two drain chunks' worth of samples
+        let mut data = Vec::with_capacity(frames * stride);
+        for _ in 0..frames {
+            for c in 0..stride {
+                data.push(c as f32 / 10.0);
+            }
+        }
+
+        // Feed exactly the way engine_loop drains: fixed-size whole-frame chunks.
+        for chunk in data.chunks(drain_chunk_len(stride)) {
+            a.process(chunk);
+        }
+
+        assert_eq!(a.mono_ring.len(), frames.min(RING_CAP));
+        for &s in &a.mono_ring {
+            assert!(
+                (s - 0.2).abs() < 1e-6,
+                "channel alignment rotated: expected 0.2 (channel 3), got {s}"
+            );
         }
     }
 
