@@ -18,7 +18,7 @@ use std::time::Duration;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::Sample;
 use ebur128::{EbuR128, Mode};
-use ringbuf::traits::{Consumer, Producer, Split};
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::HeapRb;
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use serde::Serialize;
@@ -104,6 +104,11 @@ pub struct Metrics {
     pub spectrum: Vec<f32>,
     pub sample_rate: u32,
     pub channels: u16,
+    /// Measurement generation: bumped on (re)configure and on Reset. Lets the
+    /// UI discard metrics computed before a reset it requested — e.g. so a
+    /// stale held true-peak still in flight can't re-latch the clip light the
+    /// user just cleared.
+    pub generation: u64,
 }
 
 /// Commands sent from Tauri command handlers to the audio engine thread.
@@ -136,6 +141,8 @@ struct Analyzer {
     channels: u16,
     /// Max true peak (linear) seen since the last emit; reset each emit.
     live_peak: f64,
+    /// Measurement generation (see [`Metrics::generation`]).
+    generation: u64,
     fft: Arc<dyn Fft<f32>>,
     window: Vec<f32>,
     /// Reused scratch for the de-interleaved analyzer-channel samples.
@@ -160,6 +167,7 @@ impl Analyzer {
             sample_rate: 0,
             channels: 0,
             live_peak: 0.0,
+            generation: 0,
             fft,
             window,
             inter: Vec::new(),
@@ -184,6 +192,7 @@ impl Analyzer {
         self.device_channels = device_channels;
         self.mono_ring.clear();
         self.live_peak = 0.0;
+        self.generation += 1;
         Ok(())
     }
 
@@ -243,6 +252,7 @@ impl Analyzer {
         }
         self.mono_ring.clear();
         self.live_peak = 0.0;
+        self.generation += 1;
     }
 
     fn spectrum(&self) -> Vec<f32> {
@@ -319,6 +329,7 @@ impl Analyzer {
             spectrum: self.spectrum(),
             sample_rate: sr,
             channels: ch,
+            generation: self.generation,
         }
     }
 }
@@ -654,6 +665,18 @@ fn build_silent_output(
     Ok(stream)
 }
 
+/// Number of samples the realtime callback may push for one buffer: bounded by
+/// the free ring space (and the conversion scratch, folded into `available` by
+/// the caller) and rounded down to a whole interleaved frame. On ring overrun
+/// a plain `push_slice` could push a partial frame, permanently rotating the
+/// channel alignment of everything after it even once the overrun clears.
+/// Clamping to the vacant space first is safe: this is the only producer, so
+/// the vacant space can only grow concurrently. Lock- and allocation-free.
+fn push_len(available: usize, vacant: usize, stride: usize) -> usize {
+    let n = available.min(vacant);
+    n - n % stride.max(1)
+}
+
 fn build_stream(
     app: &AppHandle,
     device_name: Option<String>,
@@ -725,13 +748,16 @@ fn build_stream(
     let output_stream: Option<cpal::Stream> = None;
 
     let cb_dropped = Arc::clone(&dropped);
+    // Frame size for the whole-frame push clamp in the callbacks (see push_len).
+    let stride = device_channels as usize;
     let stream = match sample_format {
         cpal::SampleFormat::F32 => device.build_input_stream(
             config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                let pushed = producer.push_slice(data);
-                if pushed < data.len() {
-                    cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
+                let n = push_len(data.len(), producer.vacant_len(), stride);
+                let _ = producer.push_slice(&data[..n]);
+                if n < data.len() {
+                    cb_dropped.fetch_add((data.len() - n) as u64, Ordering::Relaxed);
                 }
             },
             on_error,
@@ -745,13 +771,13 @@ fn build_stream(
             device.build_input_stream(
                 config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    let n = data.len().min(scratch.len());
+                    let n = push_len(data.len().min(scratch.len()), producer.vacant_len(), stride);
                     for (dst, &s) in scratch[..n].iter_mut().zip(data) {
                         *dst = s as f32 / 32768.0;
                     }
-                    let pushed = producer.push_slice(&scratch[..n]);
-                    if pushed < data.len() {
-                        cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
+                    let _ = producer.push_slice(&scratch[..n]);
+                    if n < data.len() {
+                        cb_dropped.fetch_add((data.len() - n) as u64, Ordering::Relaxed);
                     }
                 },
                 on_error,
@@ -763,13 +789,13 @@ fn build_stream(
             device.build_input_stream(
                 config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                    let n = data.len().min(scratch.len());
+                    let n = push_len(data.len().min(scratch.len()), producer.vacant_len(), stride);
                     for (dst, &s) in scratch[..n].iter_mut().zip(data) {
                         *dst = (s as f32 - 32768.0) / 32768.0;
                     }
-                    let pushed = producer.push_slice(&scratch[..n]);
-                    if pushed < data.len() {
-                        cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
+                    let _ = producer.push_slice(&scratch[..n]);
+                    if n < data.len() {
+                        cb_dropped.fetch_add((data.len() - n) as u64, Ordering::Relaxed);
                     }
                 },
                 on_error,
@@ -784,13 +810,13 @@ fn build_stream(
             device.build_input_stream(
                 config,
                 move |data: &[cpal::I24], _: &cpal::InputCallbackInfo| {
-                    let n = data.len().min(scratch.len());
+                    let n = push_len(data.len().min(scratch.len()), producer.vacant_len(), stride);
                     for (dst, &s) in scratch[..n].iter_mut().zip(data) {
                         *dst = f32::from_sample(s);
                     }
-                    let pushed = producer.push_slice(&scratch[..n]);
-                    if pushed < data.len() {
-                        cb_dropped.fetch_add((data.len() - pushed) as u64, Ordering::Relaxed);
+                    let _ = producer.push_slice(&scratch[..n]);
+                    if n < data.len() {
+                        cb_dropped.fetch_add((data.len() - n) as u64, Ordering::Relaxed);
                     }
                 },
                 on_error,
@@ -1151,6 +1177,20 @@ mod tests {
         }
     }
 
+    // --- Realtime-callback push clamp ----------------------------------------
+
+    #[test]
+    fn push_len_clamps_to_whole_frames() {
+        // Plenty of room: the whole buffer goes through untouched.
+        assert_eq!(push_len(960, 10_000, 6), 960);
+        // Overrun: clamped to the vacant space, rounded down to a whole frame.
+        assert_eq!(push_len(960, 100, 6), 96);
+        assert_eq!(push_len(960, 5, 6), 0); // less than one frame free
+                                            // Already-aligned clamp stays aligned; zero stride must not panic.
+        assert_eq!(push_len(960, 96, 6), 96);
+        assert_eq!(push_len(960, 100, 0), 100);
+    }
+
     // --- Loudness (golden) --------------------------------------------------
 
     #[test]
@@ -1212,6 +1252,21 @@ mod tests {
         a.reset();
         assert_eq!(a.metrics().integrated, LOUDNESS_FLOOR);
         assert!(a.mono_ring.is_empty());
+    }
+
+    // The generation lets the UI discard metrics computed before a reset it
+    // requested (a stale held true-peak could otherwise re-latch the clip
+    // light) — so it must bump on every configure and reset.
+    #[test]
+    fn generation_increments_on_configure_and_reset() {
+        let mut a = Analyzer::new();
+        assert_eq!(a.metrics().generation, 0);
+        a.configure(48_000, vec![0], 1).unwrap();
+        assert_eq!(a.metrics().generation, 1);
+        a.reset();
+        assert_eq!(a.metrics().generation, 2);
+        a.configure(48_000, vec![0], 1).unwrap();
+        assert_eq!(a.metrics().generation, 3);
     }
 
     // --- Spectrum -----------------------------------------------------------
