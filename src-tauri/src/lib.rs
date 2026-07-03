@@ -4,7 +4,7 @@ mod mac_permissions;
 
 use std::sync::mpsc::{self, Sender, SyncSender};
 
-use audio::{Command, DeviceConfig, DeviceInfo, StreamInfo};
+use audio::{Command, DeviceConfig, DeviceInfo, NoiseKind, NoiseReference, StreamInfo};
 use tauri::{Emitter, State};
 
 /// Tauri-managed application state: a channel to the audio engine thread.
@@ -70,6 +70,15 @@ fn reset_integrated(state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 fn asio_build() -> bool {
     cfg!(all(windows, target_arch = "x86_64"))
+}
+
+/// Calibrated pink/brown noise guide curve for the spectrum (see
+/// `audio::noise_reference_curve`). Declared `(async)` because it synthesizes
+/// and analyzes several seconds of audio — cheap, but not main-thread cheap.
+/// Engine-free: it builds its own analyzer, so no engine round-trip is needed.
+#[tauri::command(async)]
+fn noise_reference(kind: String, sample_rate: u32) -> Result<NoiseReference, String> {
+    audio::noise_reference_curve(NoiseKind::parse(&kind)?, sample_rate)
 }
 
 /// After `tauri-plugin-window-state` restores the saved geometry, make sure the
@@ -265,7 +274,8 @@ pub fn run() {
             start_capture,
             stop_capture,
             reset_integrated,
-            asio_build
+            asio_build,
+            noise_reference
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
