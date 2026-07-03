@@ -577,6 +577,22 @@ body {
   letter-spacing: 0.6px;
 }
 
+.spectrum-controls .guide-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* Slimmer than the config row's selects so it fits the 12px controls strip;
+   keeps .cfg-select's appearance:none + custom caret (needed on Linux/GTK). */
+.spectrum-controls .cfg-select {
+  padding: 3px 24px 3px 8px;
+  font-size: 12px;
+  background-position: right 8px center;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: default;

@@ -49,6 +49,11 @@ interface Metrics {
 	generation: number;
 }
 
+interface NoiseReference {
+	bands: number[]; // dB at the generated level, one per spectrum band
+	loudness: number; // integrated LUFS of that same signal
+}
+
 const LOUDNESS_FLOOR = -70;
 const PEAK_FLOOR = -120;
 const SPECTRUM_FLOOR = -90;
@@ -74,6 +79,18 @@ let refCurve: number[] | null = null;
 // Cursor position over the spectrum canvas in CSS px; null when the pointer is
 // off the canvas. Drives the hover crosshair/readout.
 let hover: { x: number; y: number } | null = null;
+// Calibrated noise guide (issue #9): pink/brown noise pushed through the same
+// Analyzer/spectrum() pipeline in Rust, drawn behind everything and re-anchored
+// to the Target input each frame ("this noise at your target loudness").
+// Selection persists; curves are cached per kind+rate for the session.
+type GuideKind = "" | "pink" | "brown";
+let guideKind: GuideKind = "";
+let guideCurve: number[] | null = null; // bands at the generated level
+let guideLoudness = 0; // integrated LUFS of the generated signal
+let guideRate = 0; // sample rate guideCurve was computed at
+const guideCache = new Map<string, NoiseReference>(); // "pink:48000" → curve
+let guideFetchSeq = 0; // discards stale async fetch results
+const DEFAULT_GUIDE_TARGET_LUFS = -20; // anchor when Target is empty/invalid
 let displayedPeak = PEAK_FLOOR; // live true-peak with release ballistics
 let lastPeakTs = 0; // timestamp of the last true-peak ballistics update (ms)
 let lastFrameTs = 0; // timestamp of the last spectrum frame (ms)
@@ -119,6 +136,7 @@ const aboutModal = $<HTMLDivElement>("aboutModal");
 const aboutClose = $<HTMLButtonElement>("aboutClose");
 const aboutVersion = $<HTMLSpanElement>("aboutVersion");
 const aboutAsio = $<HTMLParagraphElement>("aboutAsio");
+const guideSelect = $<HTMLSelectElement>("guide");
 const maxHoldInput = $<HTMLInputElement>("maxHold");
 const maxHoldClearBtn = $<HTMLButtonElement>("maxHoldClear");
 const freezeRefBtn = $<HTMLButtonElement>("freezeRef");
@@ -161,9 +179,10 @@ async function persist() {
 		await store.set("target", numOrNull(targetInput.value));
 		await store.set("ceiling", numOrNull(ceilingInput.value));
 		await store.set("autoStart", autostartInput.checked);
-		// The max-hold toggle persists; the held data and the frozen reference
-		// are deliberately session-only.
+		// The max-hold toggle and guide selection persist; the held data and
+		// the frozen reference are deliberately session-only.
 		await store.set("maxHold", maxHoldOn);
+		await store.set("guide", guideKind);
 		await store.save();
 	} catch {
 		// Persistence is best-effort; never block metering on a failed write.
@@ -549,6 +568,10 @@ async function start() {
 		resetBtn.hidden = false;
 		stopBtn.hidden = false;
 		configControlsEnabled(false);
+		// The stream's rate is authoritative; re-calibrate the guide if the
+		// idle-time guess differed (the per-rate cache makes this cheap).
+		if (guideKind && info.sampleRate !== guideRate)
+			void refreshGuide(info.sampleRate);
 		const mode = info.channels === 1 ? "mono" : `${info.channels} ch`;
 		setStatus(`${info.sampleRate / 1000} kHz · ${mode}`, "ok");
 		hideError();
@@ -784,6 +807,20 @@ function drawSpectrum(dt: number) {
 	}
 	ctx.textAlign = "left";
 
+	// Calibrated noise guide, re-anchored to the Target loudness each frame.
+	// Drawn first: it's the most background-y of the overlays.
+	if (guideCurve && guideCurve.length > 0) {
+		strokeBandCurve(
+			guideCurve,
+			pl,
+			pw,
+			toY,
+			"rgba(110, 168, 254, 0.6)",
+			1.5,
+			guideOffsetDb(),
+		);
+	}
+
 	// Frozen reference curve: drawn before the bars so it reads as a
 	// background guide the live spectrum is compared against.
 	if (refCurve && refCurve.length > 0) {
@@ -874,13 +911,17 @@ function strokeBandCurve(
 	toY: (db: number) => number,
 	style: string,
 	width: number,
+	offset = 0,
 ) {
 	const step = pw / vals.length;
 	ctx.strokeStyle = style;
 	ctx.lineWidth = width;
 	ctx.beginPath();
 	for (let i = 0; i < vals.length; i++) {
-		const db = Math.max(SPECTRUM_FLOOR, Math.min(SPECTRUM_TOP, vals[i]));
+		const db = Math.max(
+			SPECTRUM_FLOOR,
+			Math.min(SPECTRUM_TOP, vals[i] + offset),
+		);
 		const x = pl + (i + 0.5) * step;
 		if (i === 0) ctx.moveTo(x, toY(db));
 		else ctx.lineTo(x, toY(db));
@@ -916,7 +957,9 @@ function drawHover(
 
 	// Band readouts come from whatever data exists: the live spectrum while
 	// running, the max-hold / reference curves while idle.
-	const nBands = spec?.length ?? (maxPeaks.length || (refCurve?.length ?? 0));
+	const nBands =
+		spec?.length ??
+		(maxPeaks.length || (refCurve?.length ?? guideCurve?.length ?? 0));
 	let dotY: number | null = null;
 	if (nBands > 0) {
 		const i = Math.min(nBands - 1, Math.max(0, Math.floor(t * nBands)));
@@ -928,6 +971,10 @@ function drawHover(
 			lines.push(`max ${maxPeaks[i].toFixed(1)}`);
 		if (refCurve?.length === nBands && refCurve[i] > SPECTRUM_FLOOR)
 			lines.push(`ref ${refCurve[i].toFixed(1)}`);
+		if (guideCurve?.length === nBands) {
+			const g = guideCurve[i] + guideOffsetDb();
+			if (g > SPECTRUM_FLOOR) lines.push(`guide ${g.toFixed(1)}`);
+		}
 	}
 
 	ctx.strokeStyle = "rgba(255,255,255,0.25)";
@@ -1011,6 +1058,62 @@ function resetMeasurement() {
 	invoke("reset_integrated").catch((e) => reportError("Reset measurement", e));
 }
 
+// ---- Calibrated noise guide ------------------------------------------------
+
+// Vertical anchor for the guide: the curve is stored at its generated level,
+// and shifting it by (target − measured loudness) is exact — a gain of g dB
+// moves integrated LUFS and per-band spectrum dB identically.
+function guideOffsetDb(): number {
+	const t = parseFloat(targetInput.value);
+	return (Number.isFinite(t) ? t : DEFAULT_GUIDE_TARGET_LUFS) - guideLoudness;
+}
+
+// Rate to calibrate at: the live stream's rate when running, else the rate
+// picker (populated even while idle), else 48 kHz.
+function currentGuideRate(): number {
+	if (latest?.sampleRate) return latest.sampleRate;
+	const r = Number(rateSelect.value);
+	return Number.isFinite(r) && r > 0 ? r : 48000;
+}
+
+async function refreshGuide(rateOverride?: number) {
+	const kind = guideKind;
+	if (!kind) {
+		guideCurve = null;
+		requestFrame();
+		return;
+	}
+	const rate = rateOverride ?? currentGuideRate();
+	const key = `${kind}:${rate}`;
+	const cached = guideCache.get(key);
+	if (cached) {
+		guideCurve = cached.bands;
+		guideLoudness = cached.loudness;
+		guideRate = rate;
+		requestFrame();
+		return;
+	}
+	const seq = ++guideFetchSeq;
+	try {
+		const ref = await invoke<NoiseReference>("noise_reference", {
+			kind,
+			sampleRate: rate,
+		});
+		guideCache.set(key, ref);
+		if (seq !== guideFetchSeq || guideKind !== kind) return; // superseded
+		guideCurve = ref.bands;
+		guideLoudness = ref.loudness;
+		guideRate = rate;
+	} catch (e) {
+		if (seq !== guideFetchSeq) return;
+		guideKind = "";
+		guideSelect.value = "";
+		guideCurve = null;
+		reportError("Load guide curve", e);
+	}
+	requestFrame();
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
 	resizeCanvas();
 	// `resize` only fires for window-level changes (and catches DPR changes when
@@ -1035,6 +1138,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 		const auto = await store.get<boolean>("autoStart");
 		const hintSeen = await store.get<boolean>("resetHintSeen");
 		const mh = await store.get<boolean>("maxHold");
+		const gd = await store.get<string>("guide");
 		if (dev) pendingDevice = dev;
 		if (typeof ch === "string") pendingChannels = ch;
 		if (typeof sr === "number") pendingRate = sr;
@@ -1044,6 +1148,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 		resetHintSeen = hintSeen === true;
 		maxHoldOn = mh === true;
 		maxHoldInput.checked = maxHoldOn;
+		if (gd === "pink" || gd === "brown") {
+			guideKind = gd;
+			guideSelect.value = gd;
+		}
 	} catch {
 		// No store yet (first launch) or a read error — fall back to UI defaults.
 	}
@@ -1052,6 +1160,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 	// Restore is complete; allow control changes to persist from here on.
 	restoring = false;
+
+	// Fetch the restored guide curve now that loadDevices has populated the
+	// rate picker (the calibration rate should match what capture will use).
+	if (guideKind) void refreshGuide();
 
 	deviceSelect.addEventListener("change", async () => {
 		await refreshDeviceConfig();
@@ -1151,6 +1263,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 	autostartInput.addEventListener("change", () => void persist());
 	targetInput.addEventListener("input", () => {
 		if (latest) updateReadouts(latest);
+		requestFrame(); // the target-anchored guide curve moves, even idle
 	});
 	targetInput.addEventListener("change", () => void persist());
 	ceilingInput.addEventListener("input", () => {
@@ -1159,6 +1272,12 @@ window.addEventListener("DOMContentLoaded", async () => {
 	});
 	ceilingInput.addEventListener("change", () => void persist());
 
+	guideSelect.addEventListener("change", () => {
+		const v = guideSelect.value;
+		guideKind = v === "pink" || v === "brown" ? v : "";
+		void persist();
+		void refreshGuide(); // repaints on arrival; clears immediately for None
+	});
 	maxHoldInput.addEventListener("change", () => {
 		maxHoldOn = maxHoldInput.checked;
 		void persist();
