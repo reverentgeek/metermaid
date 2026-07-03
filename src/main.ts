@@ -64,6 +64,16 @@ const MAX_TICK_SEC = 0.1;
 let running = false;
 let latest: Metrics | null = null;
 let peaks: number[] = []; // smoothed spectrum peak-hold per band
+// Persistent per-band maximum (no decay). Deliberately survives Stop/Start and
+// Reset/Space; cleared only by its own Clear button or a band-count change.
+let maxPeaks: number[] = [];
+let maxHoldOn = false; // Max-hold toggle; persisted in settings.json
+// Frozen reference curve (a snapshot of the max-hold or the live spectrum),
+// drawn behind the bars as an EQ/tone-shaping guide. Session-only by design.
+let refCurve: number[] | null = null;
+// Cursor position over the spectrum canvas in CSS px; null when the pointer is
+// off the canvas. Drives the hover crosshair/readout.
+let hover: { x: number; y: number } | null = null;
 let displayedPeak = PEAK_FLOOR; // live true-peak with release ballistics
 let lastPeakTs = 0; // timestamp of the last true-peak ballistics update (ms)
 let lastFrameTs = 0; // timestamp of the last spectrum frame (ms)
@@ -109,6 +119,10 @@ const aboutModal = $<HTMLDivElement>("aboutModal");
 const aboutClose = $<HTMLButtonElement>("aboutClose");
 const aboutVersion = $<HTMLSpanElement>("aboutVersion");
 const aboutAsio = $<HTMLParagraphElement>("aboutAsio");
+const maxHoldInput = $<HTMLInputElement>("maxHold");
+const maxHoldClearBtn = $<HTMLButtonElement>("maxHoldClear");
+const freezeRefBtn = $<HTMLButtonElement>("freezeRef");
+const clearRefBtn = $<HTMLButtonElement>("clearRef");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
 
@@ -147,6 +161,9 @@ async function persist() {
 		await store.set("target", numOrNull(targetInput.value));
 		await store.set("ceiling", numOrNull(ceilingInput.value));
 		await store.set("autoStart", autostartInput.checked);
+		// The max-hold toggle persists; the held data and the frozen reference
+		// are deliberately session-only.
+		await store.set("maxHold", maxHoldOn);
 		await store.save();
 	} catch {
 		// Persistence is best-effort; never block metering on a failed write.
@@ -523,7 +540,9 @@ async function start() {
 		displayedPeak = PEAK_FLOOR;
 		lastPeakTs = 0;
 		// Drop the previous session's spectrum peak-hold so the new capture
-		// starts clean rather than under a stale, decaying peak line.
+		// starts clean rather than under a stale, decaying peak line. The
+		// persistent max-hold and frozen reference intentionally survive
+		// Stop/Start — they're cleared only by their own controls.
 		peaks = [];
 		// Reset becomes the in-session primary; Stop is a quiet secondary.
 		startBtn.hidden = true;
@@ -765,39 +784,182 @@ function drawSpectrum(dt: number) {
 	}
 	ctx.textAlign = "left";
 
+	// Frozen reference curve: drawn before the bars so it reads as a
+	// background guide the live spectrum is compared against.
+	if (refCurve && refCurve.length > 0) {
+		strokeBandCurve(refCurve, pl, pw, toY, "rgba(242, 193, 78, 0.6)", 1.5);
+	}
+
+	const ceil = parseFloat(ceilingInput.value);
+	const hasCeil =
+		Number.isFinite(ceil) && ceil <= SPECTRUM_TOP && ceil >= SPECTRUM_FLOOR;
+
 	const spec = latest?.spectrum;
-	if (!spec || spec.length === 0) return;
+	if (spec && spec.length > 0) {
+		const n = spec.length;
+		if (peaks.length !== n) peaks = new Array(n).fill(SPECTRUM_FLOOR);
+		if (maxPeaks.length !== n) maxPeaks = new Array(n).fill(SPECTRUM_FLOOR);
 
-	const n = spec.length;
-	if (peaks.length !== n) peaks = new Array(n).fill(SPECTRUM_FLOOR);
+		const barW = pw / n;
 
-	const barW = pw / n;
+		const grad = ctx.createLinearGradient(0, pt, 0, pb);
+		grad.addColorStop(0, "#ff5d5d");
+		grad.addColorStop(0.35, "#ffd24a");
+		grad.addColorStop(0.7, "#54e08a");
+		grad.addColorStop(1, "#2a9d8f");
 
-	const grad = ctx.createLinearGradient(0, pt, 0, pb);
-	grad.addColorStop(0, "#ff5d5d");
-	grad.addColorStop(0.35, "#ffd24a");
-	grad.addColorStop(0.7, "#54e08a");
-	grad.addColorStop(1, "#2a9d8f");
-	ctx.fillStyle = grad;
+		for (let i = 0; i < n; i++) {
+			const db = Math.max(SPECTRUM_FLOOR, Math.min(SPECTRUM_TOP, spec[i]));
+			const y = toY(db);
+			// Bands over the clip ceiling render hot instead of the gradient.
+			ctx.fillStyle = hasCeil && spec[i] >= ceil ? "#ff5d5d" : grad;
+			ctx.fillRect(pl + i * barW, y, barW - 1, pb - y);
 
-	for (let i = 0; i < n; i++) {
-		const db = Math.max(SPECTRUM_FLOOR, Math.min(SPECTRUM_TOP, spec[i]));
-		const y = toY(db);
-		ctx.fillRect(pl + i * barW, y, barW - 1, pb - y);
+			if (db > peaks[i]) peaks[i] = db;
+			else
+				peaks[i] = Math.max(
+					SPECTRUM_FLOOR,
+					peaks[i] - SPECTRUM_PEAK_DECAY_DB_PER_SEC * dt,
+				);
 
-		if (db > peaks[i]) peaks[i] = db;
-		else
-			peaks[i] = Math.max(
-				SPECTRUM_FLOOR,
-				peaks[i] - SPECTRUM_PEAK_DECAY_DB_PER_SEC * dt,
-			);
+			// The persistent max accumulates only while its toggle is on, so
+			// enabling it holds from "now" rather than from unseen history.
+			if (maxHoldOn && db > maxPeaks[i]) maxPeaks[i] = db;
+		}
+
+		ctx.fillStyle = "rgba(255,255,255,0.75)";
+		for (let i = 0; i < n; i++) {
+			const y = toY(peaks[i]);
+			ctx.fillRect(pl + i * barW, y - 1, barW - 1, 2);
+		}
 	}
 
-	ctx.fillStyle = "rgba(255,255,255,0.75)";
-	for (let i = 0; i < n; i++) {
-		const y = toY(peaks[i]);
-		ctx.fillRect(pl + i * barW, y - 1, barW - 1, 2);
+	// Persistent max-hold: a connected solid line, distinct from the decaying
+	// peak-hold's translucent per-band ticks. It survives Stop/Start, so it is
+	// drawn even while idle (latest === null).
+	if (maxHoldOn && maxPeaks.length > 0) {
+		strokeBandCurve(maxPeaks, pl, pw, toY, "#ffffff", 2);
 	}
+
+	// Clip-ceiling reference line. The spectrum Y-axis and the ceiling are both
+	// dBFS-family quantities — unlike the LUFS target, which deliberately isn't
+	// drawn here (it's a different, time-averaged unit).
+	if (hasCeil) {
+		const y = toY(ceil);
+		ctx.strokeStyle = "rgba(255, 93, 93, 0.8)";
+		ctx.setLineDash([4, 3]);
+		ctx.beginPath();
+		ctx.moveTo(pl, y + 0.5);
+		ctx.lineTo(pl + pw, y + 0.5);
+		ctx.stroke();
+		ctx.setLineDash([]);
+		ctx.fillStyle = "rgba(255, 93, 93, 0.9)";
+		ctx.textAlign = "right";
+		ctx.fillText(`${ceil} ceil`, pl + pw - 2, y - 4);
+		ctx.textAlign = "left";
+	}
+
+	drawHover(spec, pl, pt, pw, pb, nyquist, toY);
+}
+
+// Polyline through the log-band centers; shared by the persistent max-hold and
+// the frozen reference curve.
+function strokeBandCurve(
+	vals: number[],
+	pl: number,
+	pw: number,
+	toY: (db: number) => number,
+	style: string,
+	width: number,
+) {
+	const step = pw / vals.length;
+	ctx.strokeStyle = style;
+	ctx.lineWidth = width;
+	ctx.beginPath();
+	for (let i = 0; i < vals.length; i++) {
+		const db = Math.max(SPECTRUM_FLOOR, Math.min(SPECTRUM_TOP, vals[i]));
+		const x = pl + (i + 0.5) * step;
+		if (i === 0) ctx.moveTo(x, toY(db));
+		else ctx.lineTo(x, toY(db));
+	}
+	ctx.stroke();
+	ctx.lineWidth = 1; // restore the grid default
+}
+
+// Crosshair + frequency/level readout at the cursor. Drawn last so it sits on
+// top of everything; also works while idle, where the max-hold and reference
+// curves (which survive teardown) are still readable.
+function drawHover(
+	spec: number[] | undefined,
+	pl: number,
+	pt: number,
+	pw: number,
+	pb: number,
+	nyquist: number,
+	toY: (db: number) => number,
+) {
+	if (!hover) return;
+	const { x, y } = hover;
+	if (x < pl || x > pl + pw || y < pt || y > pb) return;
+
+	// Inverse of hzToX: the continuous frequency under the cursor.
+	const fLo = 20;
+	const fHi = Math.min(20000, nyquist);
+	const t = (x - pl) / pw;
+	const hz = fLo * Math.exp(Math.log(fHi / fLo) * t);
+	const lines: string[] = [
+		hz < 1000 ? `${Math.round(hz)} Hz` : `${(hz / 1000).toFixed(2)} kHz`,
+	];
+
+	// Band readouts come from whatever data exists: the live spectrum while
+	// running, the max-hold / reference curves while idle.
+	const nBands = spec?.length ?? (maxPeaks.length || (refCurve?.length ?? 0));
+	let dotY: number | null = null;
+	if (nBands > 0) {
+		const i = Math.min(nBands - 1, Math.max(0, Math.floor(t * nBands)));
+		if (spec) {
+			lines.push(`${fmt(spec[i], SPECTRUM_FLOOR)} dB`);
+			dotY = toY(Math.max(SPECTRUM_FLOOR, Math.min(SPECTRUM_TOP, spec[i])));
+		}
+		if (maxHoldOn && maxPeaks.length === nBands && maxPeaks[i] > SPECTRUM_FLOOR)
+			lines.push(`max ${maxPeaks[i].toFixed(1)}`);
+		if (refCurve?.length === nBands && refCurve[i] > SPECTRUM_FLOOR)
+			lines.push(`ref ${refCurve[i].toFixed(1)}`);
+	}
+
+	ctx.strokeStyle = "rgba(255,255,255,0.25)";
+	ctx.beginPath();
+	ctx.moveTo(x + 0.5, pt);
+	ctx.lineTo(x + 0.5, pb);
+	ctx.stroke();
+	if (dotY !== null) {
+		ctx.fillStyle = "#fff";
+		ctx.beginPath();
+		ctx.arc(x, dotY, 2.5, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	// Readout box, offset from the cursor and clamped inside the plot rect
+	// (flips to the left of the cursor near the right edge).
+	const lineH = 13;
+	let boxW = 0;
+	for (const s of lines) boxW = Math.max(boxW, ctx.measureText(s).width);
+	boxW += 12;
+	const boxH = lines.length * lineH + 8;
+	let bx = x + 12;
+	if (bx + boxW > pl + pw) bx = x - 12 - boxW;
+	bx = Math.max(pl, Math.min(bx, pl + pw - boxW));
+	const by = Math.max(pt, Math.min(y + 12, pb - boxH));
+	ctx.fillStyle = "rgba(12, 14, 19, 0.92)";
+	ctx.fillRect(bx, by, boxW, boxH);
+	ctx.strokeStyle = "rgba(255,255,255,0.18)";
+	ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
+	ctx.fillStyle = "rgba(255,255,255,0.85)";
+	ctx.textBaseline = "middle";
+	for (let l = 0; l < lines.length; l++) {
+		ctx.fillText(lines[l], bx + 6, by + 4 + lineH * l + lineH / 2);
+	}
+	ctx.textBaseline = "alphabetic";
 }
 
 let rafPending = false;
@@ -832,6 +994,8 @@ function frame(now: number) {
 function resetMeasurement() {
 	// Using Reset means the workflow has been learned — retire the hint for good.
 	void markResetHintSeen();
+	// Reset clears the measurement + decaying peak-hold only; the persistent
+	// max-hold and frozen reference have their own Clear controls.
 	peaks = [];
 	displayedPeak = PEAK_FLOOR;
 	lastPeakTs = 0;
@@ -867,6 +1031,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 		const ceil = await store.get<number>("ceiling");
 		const auto = await store.get<boolean>("autoStart");
 		const hintSeen = await store.get<boolean>("resetHintSeen");
+		const mh = await store.get<boolean>("maxHold");
 		if (dev) pendingDevice = dev;
 		if (typeof ch === "string") pendingChannels = ch;
 		if (typeof sr === "number") pendingRate = sr;
@@ -874,6 +1039,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 		if (typeof ceil === "number") ceilingInput.value = String(ceil);
 		autostartInput.checked = auto === true;
 		resetHintSeen = hintSeen === true;
+		maxHoldOn = mh === true;
+		maxHoldInput.checked = maxHoldOn;
 	} catch {
 		// No store yet (first launch) or a read error — fall back to UI defaults.
 	}
@@ -985,8 +1152,49 @@ window.addEventListener("DOMContentLoaded", async () => {
 	targetInput.addEventListener("change", () => void persist());
 	ceilingInput.addEventListener("input", () => {
 		if (latest) updateReadouts(latest);
+		requestFrame(); // the spectrum's ceiling reference line moves, even idle
 	});
 	ceilingInput.addEventListener("change", () => void persist());
+
+	maxHoldInput.addEventListener("change", () => {
+		maxHoldOn = maxHoldInput.checked;
+		void persist();
+		requestFrame(); // shows/hides the held line, even while idle
+	});
+	maxHoldClearBtn.addEventListener("click", () => {
+		maxPeaks = []; // reallocated at the next live frame, like `peaks`
+		requestFrame();
+	});
+	freezeRefBtn.addEventListener("click", () => {
+		// Snapshot the held maximum when it has data; otherwise the live
+		// spectrum. No-op when nothing has been captured yet.
+		const src =
+			maxHoldOn && maxPeaks.some((v) => v > SPECTRUM_FLOOR)
+				? maxPeaks
+				: latest?.spectrum;
+		if (!src || src.length === 0) return;
+		refCurve = src.slice();
+		clearRefBtn.disabled = false;
+		requestFrame();
+	});
+	clearRefBtn.addEventListener("click", () => {
+		refCurve = null;
+		clearRefBtn.disabled = true;
+		requestFrame();
+	});
+
+	// Hover crosshair/readout. requestFrame() coalesces via rafPending, so this
+	// is free while the capture loop is animating and exactly one repaint per
+	// move while idle.
+	canvas.addEventListener("pointermove", (e) => {
+		const rect = canvas.getBoundingClientRect();
+		hover = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+		requestFrame();
+	});
+	canvas.addEventListener("pointerleave", () => {
+		hover = null;
+		requestFrame(); // erase the crosshair, even while idle
+	});
 
 	await listen<Metrics>("meter-update", (event) => {
 		latest = event.payload;
