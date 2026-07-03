@@ -32,11 +32,11 @@
     "@tauri-apps/plugin-updater": "^2.10.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.1",
+    "@biomejs/biome": "^2.5.2",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@tauri-apps/cli": "^2.11.4",
-    "markdownlint-cli2": "^0.22.1",
+    "markdownlint-cli2": "^0.23.0",
     "typescript": "~6.0.3",
     "vite": "^8.1.2"
   }
