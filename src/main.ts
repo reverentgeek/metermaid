@@ -855,7 +855,10 @@ function drawSpectrum(dt: number) {
 		ctx.setLineDash([]);
 		ctx.fillStyle = "rgba(255, 93, 93, 0.9)";
 		ctx.textAlign = "right";
-		ctx.fillText(`${ceil} ceil`, pl + pw - 2, y - 4);
+		// Near the plot top (the common −1 dBTP case) a label above the line
+		// would clip against the canvas edge — drop it below the line instead.
+		const labelY = y - 4 < pt + 10 ? y + 12 : y - 4;
+		ctx.fillText(`${ceil} ceil`, pl + pw - 2, labelY);
 		ctx.textAlign = "left";
 	}
 
