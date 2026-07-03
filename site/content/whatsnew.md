@@ -16,6 +16,16 @@
 
 # What's new
 
+## 0.5.0 2026-07-03
+
+New spectrum tools for shaping your tone, built around a common guitarist workflow: compare what you are playing against a reference, right on the meter.
+
+- **Max hold** keeps a line at the highest level each frequency has hit until you clear it. Turn it on in the new Spectrum row, play a riff or a burst of noise, and the full picture of your tone stays on screen. It survives stopping and starting, and the Reset button leaves it alone.
+- **Freeze ref** saves that held curve (or the live spectrum) as a background reference. Capture one sound, freeze it, then shape another sound against it.
+- **Noise guides.** Pick Pink noise or Brown noise from the Guide menu and MeterMaid draws the curve that noise would make at your Target loudness, without you having to play any noise at all. Pink and brown noise are popular EQ references for studio and live guitar tones. The guide moves with your Target setting, so it always shows where your tone should sit.
+- The spectrum now marks your **clip ceiling** with a dashed line, and any frequency that crosses it lights up red.
+- **Point at the spectrum** to read the exact frequency and level under your cursor, along with the held maximum and reference values when they are showing.
+
 ## 0.4.5 2026-07-02
 
 Fixes for Linux and Windows.

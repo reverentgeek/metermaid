@@ -132,6 +132,26 @@
       <span class="unit-inline">dBTP</span>
     </section>
 
+    <section class="spectrum-controls">
+      <span class="row-label">Spectrum</span>
+      <span class="spacer"></span>
+      <label class="guide-pick" title="Draw a calibrated noise curve behind the bars, anchored at the Target loudness — what pink/brown noise at your target would look like on this meter">
+        Guide
+        <select id="guide" class="cfg-select">
+          <option value="" selected>None</option>
+          <option value="pink">Pink noise</option>
+          <option value="brown">Brown noise</option>
+        </select>
+      </label>
+      <label class="check" title="Hold the highest level seen in each band until cleared (survives Stop/Start; Reset leaves it alone)">
+        <input id="maxHold" type="checkbox" />
+        Max hold
+      </label>
+      <button id="maxHoldClear" class="btn btn-small" type="button" title="Clear the held maximum curve">Clear</button>
+      <button id="freezeRef" class="btn btn-small" type="button" title="Freeze the held maximum (or the live spectrum) as a background reference curve">Freeze ref</button>
+      <button id="clearRef" class="btn btn-small" type="button" title="Remove the reference curve" disabled>Clear ref</button>
+    </section>
+
     <section class="spectrum-wrap">
       <canvas id="spectrum"></canvas>
     </section>

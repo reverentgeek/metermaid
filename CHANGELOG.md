@@ -4,7 +4,15 @@ All notable changes to MeterMaid are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-07-03
+
+### Added
+
+- **Persistent spectrum max peak-hold.** A new **Max hold** toggle draws each band's maximum as a solid white line that never decays, with its own Clear button. It survives Stop/Start and is deliberately untouched by Reset/Space (which keep resetting integrated loudness and the decaying peak-hold); the toggle state persists across launches. ([#9](https://github.com/reverentgeek/metermaid/issues/9))
+- **Freeze-as-reference.** **Freeze ref** snapshots the held maximum (or the live spectrum) as an amber background curve to EQ against — e.g. capture pink/brown noise, freeze it, then shape a guitar tone against the curve. Session-only; **Clear ref** removes it. ([#9](https://github.com/reverentgeek/metermaid/issues/9))
+- **Clip ceiling drawn on the spectrum.** A dashed line marks the Ceiling value over the bars (both are dBFS-family quantities), and any band crossing it renders hot red. The line tracks Ceiling edits live, including while stopped.
+- **Spectrum hover readout.** Pointing at the spectrum shows a crosshair with the frequency and level under the cursor, plus the max-hold and reference values when present — while capturing or idle.
+- **Calibrated noise guide curves.** A Guide dropdown draws what pink or brown noise at your Target loudness would look like on this meter — generated in Rust and measured through the same 96-band analyzer as live audio (not an idealized −3/−6 dB per octave line, which the peak-bin display would not match), anchored via the same signal's integrated LUFS and tracking the Target input live. The selection persists across launches. ([#9](https://github.com/reverentgeek/metermaid/issues/9))
 
 ## [0.4.5] - 2026-07-02
 
