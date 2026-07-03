@@ -18,12 +18,12 @@ Future tasks and ideas for the MeterMaid app. Roughly ordered by value.
 
 ### Spectrum peak-hold & reference curves ([#9](https://github.com/reverentgeek/metermaid/issues/9))
 
-- [ ] **Persistent max peak-hold** — a per-band maximum that holds (no decay) until cleared, drawn as a distinct line over the live bars. Give it its **own** toggle + clear control rather than overloading the existing Reset, which resets integrated loudness and the decaying peak-hold together.
+- [x] **Persistent max peak-hold** — shipped: a per-band maximum drawn as a solid white line over the live bars, with its own **Max hold** toggle (persisted in settings) + **Clear** button. It survives Stop/Start and is untouched by Reset/Space, which keep resetting integrated loudness and the decaying peak-hold only.
 - [ ] **Calibrated pink/brown noise reference curves** — optional background guide curves for EQ/tone-shaping (a visual target, not a precise measurement). Don't draw idealized −3 dB/oct (pink) / −6 dB/oct (brown) lines: MeterMaid shows the peak FFT-bin magnitude per log band, not a PSD, so a theoretical slope won't match what real noise displays as. Instead calibrate to the analyzer — generate the noise, run it through the same 96-band `spectrum()` pipeline, and store the resulting per-band response as the reference shape. Precompute for the common 20 Hz–20 kHz case (44.1/48 kHz); handle lower sample rates where nyquist < 20 kHz shifts the top band edge. Needs a vertical anchor/offset (e.g. pin at 1 kHz) so the shape is comparable regardless of level.
 
-Implementation note: a "freeze current spectrum as a background reference" feature would complement these — it reuses the max-hold machinery and lets the user freeze pink/brown noise *or* a reference tone they're matching. See the [#9](https://github.com/reverentgeek/metermaid/issues/9) discussion.
+Implementation note: "freeze current spectrum as a background reference" shipped as the **Freeze ref / Clear ref** buttons — it snapshots the max-hold when populated (else the live spectrum) as an amber background curve, session-only. This already covers the play-noise-then-freeze workflow from the [#9](https://github.com/reverentgeek/metermaid/issues/9) discussion; the calibrated curves above remain the built-in convenience version.
 
-Work-package note: **persistent max peak-hold**, the **ceiling reference line**, and the **spectrum hover readout** (below) all touch `drawSpectrum`/`toY` and the canvas interaction layer — each is ~30–60 lines, and doing them together is much cheaper than doing them months apart. Together they also give the reference-curve work a richer canvas foundation to land on.
+Work-package note (done): **persistent max peak-hold**, the **ceiling reference line**, and the **spectrum hover readout** shipped together — they all touch `drawSpectrum`/`toY` and the canvas interaction layer, which now gives the reference-curve work a richer foundation to land on (`strokeBandCurve`, hover readout, idle-repaint wiring).
 
 ## Distribution
 
@@ -38,7 +38,7 @@ Work-package note: **persistent max peak-hold**, the **ceiling reference line**,
 ## Possible enhancements
 
 - [ ] **Spectrum reference lines.** Note: the spectrum already draws a numeric dB grid (horizontal lines + labels every 20 dB) and a frequency grid in `drawSpectrum` — so the "dB grid" is largely done. Two distinct follow-ups remain, which the original "dB grid / target line overlay" item conflated:
-  - **Ceiling reference line** (easy, dimensionally correct) — draw a horizontal line at the −1 dBTP ceiling (and optionally 0 dBFS) over the bars, tinting any band that crosses it. The spectrum Y-axis is per-band FFT peak magnitude (dBFS), which is the same family as the ceiling, so this is meaningful. Reuses the existing `toY(db)` helper (~20–30 lines).
+  - [x] **Ceiling reference line** — shipped: a dashed line at the clip-ceiling value (live-updating from the Ceiling input, even while idle), with any band crossing it rendered hot red. The spectrum Y-axis is per-band FFT peak magnitude (dBFS), the same family as the ceiling, so this is dimensionally meaningful.
   - **dB grid polish** (trivial) — optionally finer ticks (every 10 dB) and/or a toggle.
   - **Do NOT draw the LUFS target on the spectrum.** The Target control is integrated LUFS (BS.1770-weighted, time-averaged) — a different quantity from per-band FFT magnitude, so a horizontal target line on the spectrum would be dimensionally wrong and misleading. The LUFS target line belongs on the loudness history graph below, where the Y-axis *is* LUFS.
 - [ ] **Loudness history** graph (integrated/short-term over time). Natural home for a **−20 LUFS target reference line** (and standard-preset lines), since its Y-axis is loudness — unlike the spectrum.
@@ -47,7 +47,7 @@ Work-package note: **persistent max peak-hold**, the **ceiling reference line**,
 - [ ] **A/B compare** two captures for matching patch levels.
 - [ ] Spectrum options: linear/log toggle, adjustable averaging/smoothing, peak vs RMS.
 - [ ] **Run the ffmpeg cross-check in CI** — the `ebur128_matches_ffmpeg` golden test already exists (`#[ignore]`d in `audio.rs`); the remaining work is a ~10-line CI change: install ffmpeg on the macOS/Linux app-matrix legs and run `cargo test ebur128_matches_ffmpeg -- --ignored`.
-- [ ] **Spectrum hover readout** — show frequency + dB at the cursor (pairs with the spectrum reference lines above; handy for EQ and the reference-curve work). Part of the canvas work package noted under Features.
+- [x] **Spectrum hover readout** — shipped: crosshair + frequency/dB at the cursor (plus max-hold and reference values when present), working both while capturing and idle.
 - [x] **Keyboard shortcut for Reset** (Space) — the leveling loop hits Reset constantly between patches, so a shortcut tightens the core workflow. Gated on capture being active and focus not in an input/select/button.
 
 ## Tooling
