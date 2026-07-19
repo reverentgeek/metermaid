@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Internal
 
 - Refreshed the Rust dependency tree to the latest compatible versions (`cargo update`), including the Tauri stack (tauri 2.11.5, tauri-runtime-wry 2.11.4, tauri-plugin\* 2.6.3, tauri-plugin-store 2.4.4). The `windows`/`windows-core` crates are deliberately held at the 0.61 line: `cargo update` tried to move cpal's WASAPI backend onto the untested `windows` 0.62, so those two are pinned back to 0.61.3/0.61.2 (the pair cpal 0.18's `implement` macro is written against). No user-facing changes.
+- Updated the frontend build toolchain: TypeScript 6 → 7, Vite 8.1.2 → 8.1.5, Biome 2.5.2 → 2.5.4, markdownlint-cli2 0.23.0 → 0.23.1, and pnpm 11.9.0 → 11.15.0. Type-check, Vite build, and lint all pass on the new versions.
 
 ## [0.5.0] - 2026-07-03
 
