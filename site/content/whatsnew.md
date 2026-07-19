@@ -16,6 +16,10 @@
 
 # What's new
 
+## 0.5.1 2026-07-19
+
+Under-the-hood housekeeping. This release updates the components MeterMaid is built on to keep it current, secure, and reliable across macOS, Windows, and Linux. Nothing changes in how the app looks or works.
+
 ## 0.5.0 2026-07-03
 
 New spectrum tools for shaping your tone, built around a common guitarist workflow: compare what you are playing against a reference, right on the meter.
