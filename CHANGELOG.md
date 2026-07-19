@@ -4,6 +4,12 @@ All notable changes to MeterMaid are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-07-19
+
+### Internal
+
+- Refreshed the Rust dependency tree to the latest compatible versions (`cargo update`), including the Tauri stack (tauri 2.11.5, tauri-runtime-wry 2.11.4, tauri-plugin\* 2.6.3, tauri-plugin-store 2.4.4). The `windows`/`windows-core` crates are deliberately held at the 0.61 line: `cargo update` tried to move cpal's WASAPI backend onto the untested `windows` 0.62, so those two are pinned back to 0.61.3/0.61.2 (the pair cpal 0.18's `implement` macro is written against). No user-facing changes.
+
 ## [0.5.0] - 2026-07-03
 
 ### Added
