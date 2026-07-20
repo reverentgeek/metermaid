@@ -6,23 +6,15 @@ MeterMaid is a cross-platform desktop **LUFS / loudness meter** built with **Tau
 
 ## Commands
 
+Standard invocations are in `package.json` scripts. The non-obvious ones:
+
 ```sh
 pnpm install              # also installs the git pre-commit hook via core.hooksPath
-pnpm tauri dev            # run the app (Vite dev server + Rust); HMR applies UI edits live
-pnpm tauri build          # production bundle → src-tauri/target/release/bundle/
-pnpm build                # frontend type-check + Vite build only (tsc && vite build)
-pnpm lint                 # Biome (TS) + markdownlint (Markdown)
-pnpm format               # apply Biome fixes/formatting
-```
-
-Rust checks run from `src-tauri/`:
-
-```sh
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test
-cargo test build_error_messages_name_the_device   # single test by name substring
+pnpm tauri dev            # HMR applies UI edits live
 cargo test ebur128_matches_ffmpeg -- --ignored --nocapture   # optional ffmpeg cross-check (needs ffmpeg)
 ```
+
+Rust checks (clippy with `-D warnings`, `cargo test`) run from `src-tauri/`.
 
 The audio tests in `audio.rs` (`#[cfg(test)] mod tests`) drive the `Analyzer` directly with synthesized frames — **no audio device required**. New analysis behavior should come with one of these golden-signal tests.
 
@@ -57,56 +49,15 @@ Rust `Metrics`/`DeviceConfig`/`StreamInfo` use `#[serde(rename_all = "camelCase"
 
 Capturing from **any** input device on macOS requires the microphone permission — this is an OS rule, not a MeterMaid choice, and applies even to USB interfaces. Under the notarized hardened runtime, that means the `com.apple.security.device.audio-input` entitlement in `src-tauri/Entitlements.plist` (wired via `bundle.macOS.entitlements`) is mandatory: without it a *signed* build launches but is silently denied audio. The usage string lives in `src-tauri/Info.plist`.
 
-## Release & signing process
+## Release & signing
 
-Builds are produced by `.github/workflows/release.yml` (matrix: macOS/Windows/Linux × x64/arm64 via `tauri-action`), triggered by pushing a `v*` tag. **macOS builds are signed with a Developer ID and notarized/stapled** (the `APPLE_*` repo secrets are configured); **Windows builds are currently unsigned** (no `signCommand` in `tauri.conf.json`); Linux packages are unsigned by nature.
+**Signing posture.** macOS builds are signed with a Developer ID and notarized (the `APPLE_*` repo secrets are configured); **Windows builds are currently unsigned** (no `signCommand` in `tauri.conf.json`); Linux packages are unsigned by nature.
 
-**ASIO on the Windows-x64 leg.** Only `x86_64-pc-windows-msvc` links ASIO. Its matrix steps set up the MSVC env (`ilammy/msvc-dev-cmd`), point `CPAL_ASIO_DIR` at the vendored [`third-party/asio`](third-party/asio) SDK, and set `LIBCLANG_PATH`; the ARM64 Windows leg has no ASIO SDK and builds WASAPI-only. **Licensing consequence:** the vendored SDK is GPLv3, so the **distributed Windows-x64 installer is GPLv3** ([`LICENSE-GPL-3.0.txt`](LICENSE-GPL-3.0.txt)) while MeterMaid's source and every other binary (macOS, Linux, Windows-ARM64) stay MIT. This is a per-artifact distinction; don't relicense the project. CI (`ci.yml`) build-tests the ASIO path on a `windows-latest` runner so it can't silently rot.
+**ASIO makes the Windows-x64 artifact GPLv3.** Only `x86_64-pc-windows-msvc` links the vendored [`third-party/asio`](third-party/asio) SDK, which is GPLv3 — so the **distributed Windows-x64 installer is GPLv3** ([`LICENSE-GPL-3.0.txt`](LICENSE-GPL-3.0.txt)) while MeterMaid's source and every other binary (macOS, Linux, Windows-ARM64) stay MIT. This is a per-artifact distinction; **don't relicense the project.**
 
-**Updater signing is separate from OS code signing.** The in-app self-updater (`tauri-plugin-updater`, see "Self-update" below) requires its own minisign keypair: the public key lives in `tauri.conf.json` (`plugins.updater.pubkey`) and the private key is the `TAURI_SIGNING_PRIVATE_KEY` repo secret (generated with `pnpm tauri signer generate`, empty password → `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` may be empty). This secret is **mandatory** now that `bundle.createUpdaterArtifacts` is on — without it the release build fails. Rotating the key requires shipping a build with the new pubkey *before* any release signed by it, or existing installs will reject the update.
+**Updater signing is separate from OS code signing, and rotating the key is a footgun.** The in-app self-updater needs its own minisign keypair: the public key lives in `tauri.conf.json` (`plugins.updater.pubkey`), the private key in the `TAURI_SIGNING_PRIVATE_KEY` repo secret (generated with `pnpm tauri signer generate`, empty password → `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` may be empty). It is **mandatory** now that `bundle.createUpdaterArtifacts` is on — without it the release build fails. Rotating it requires shipping a build carrying the new pubkey *before* any release signed by it, or existing installs will reject the update.
 
-To cut a release after the version PR is merged to `main`:
-
-1. **Bump the version in all four places** (must stay in lockstep): `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and the `metermaid` entry in `src-tauri/Cargo.lock`. Add a dated `## [x.y.z]` section to `CHANGELOG.md`, and — if the release has anything user-facing — a plain-English entry to [`site/content/whatsnew.md`](site/content/whatsnew.md) for the website (see "Website" below). (This is normally done in the feature PR, not at tag time.)
-2. **Tag and push** an annotated tag matching the existing style (subject `MeterMaid x.y.z`):
-
-   ```sh
-   git tag -a v0.2.0 -m "MeterMaid 0.2.0"
-   git push origin v0.2.0
-   ```
-
-3. The workflow builds every target and uploads installers to a **draft** GitHub Release named `MeterMaid v0.2.0`. Watch it:
-
-   ```sh
-   gh run list --workflow=release.yml --limit 3
-   gh run watch <run-id> --exit-status
-   ```
-
-4. **Verify before publishing** — confirm the `create-release` job plus all 6 build-matrix jobs succeeded and assets are complete. Base installers (14): macOS `.dmg`×2 + `.app.tar.gz`×2, Windows `-setup.exe`×2 + `.msi`×2, Linux `.AppImage`×2 + `.deb`×2 + `.rpm`×2. With `bundle.createUpdaterArtifacts` on, Tauri emits a detached `.sig` for **every** bundle except the `.dmg` (×12), plus one `latest.json` — so expect **27 assets** total. All matrix jobs upload to the single draft the `create-release` job creates up front (`releaseId`); this replaced letting each job create-or-find its own, which raced into duplicate drafts with assets split across them. `latest.json` is what the in-app updater polls; if it's missing, self-update is silently broken (check the `TAURI_SIGNING_PRIVATE_KEY` secret is set). For macOS, the build log should show `Notarizing ... status Accepted` + `Stapling`:
-
-   ```sh
-   gh release view v0.2.0 --json isDraft,assets --jq '{isDraft, assets:[.assets[].name]}'
-   ```
-
-5. **Publish:**
-
-   ```sh
-   gh release edit v0.2.0 --draft=false --latest
-   ```
-
-   (`gh release view --json` has no `isLatest` field — verify with `isDraft`/`publishedAt` instead.)
-
-   Publishing also fires the `Deploy website` workflow (`release: published`), which rebuilds [`site/`](site) so the website's version badge and download links pick up this release automatically — see "Website" below. Nothing else to do for the site.
-
-### Release notes / download table
-
-The auto-generated body has no download table — add one matching prior releases (see `gh release view v0.1.1 --json body`). Set it with `gh release edit v0.2.0 --notes-file <file>`. The table links are built from the asset names, which follow these patterns under `https://github.com/reverentgeek/metermaid/releases/download/v<ver>/`:
-
-- macOS: `MeterMaid_<ver>_aarch64.dmg` (Apple Silicon), `MeterMaid_<ver>_x64.dmg` (Intel)
-- Windows: `MeterMaid_<ver>_x64-setup.exe` / `MeterMaid_<ver>_arm64-setup.exe`, `MeterMaid_<ver>_x64_en-US.msi` / `MeterMaid_<ver>_arm64_en-US.msi`
-- Linux: `MeterMaid_<ver>_amd64.AppImage` / `MeterMaid_<ver>_aarch64.AppImage`, `MeterMaid_<ver>_amd64.deb` / `MeterMaid_<ver>_arm64.deb`, `MeterMaid-<ver>-1.x86_64.rpm` / `MeterMaid-<ver>-1.aarch64.rpm` (note: rpm uses `-` separators and a `-1` release component)
-
-Conclude the notes with a What's Changed summary (from the changelog) and `**Full Changelog**: https://github.com/reverentgeek/metermaid/compare/v<prev>...v<ver>`.
+**To cut a release, use the `release` skill** ([`.claude/skills/release/SKILL.md`](.claude/skills/release/SKILL.md)) — it carries the four-file version-bump checklist, the tag/watch/verify/publish steps, the 27-asset expectation, and the download-table asset patterns.
 
 Signing secrets and the full signed-build env are documented in `README.md` ("Code signing & notarization", "Signing secrets"); Windows toolchain/cross-compile setup is in README "Platform support".
 
