@@ -39,6 +39,7 @@ test.describe( "Accessibility", () => {
 			"Getting started",
 			"Updates",
 			"Feedback",
+			"Support MeterMaid",
 		];
 		for ( const label of expectedLabels ) {
 			await expect(
