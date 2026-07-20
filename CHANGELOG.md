@@ -4,6 +4,16 @@ All notable changes to MeterMaid are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-07-20
+
+### Added
+
+- **"Buy me a coffee" link.** The About dialog now carries an optional tip link (Ko-fi) next to Submit feedback, opened in the system browser through the existing `.about-link` opener handler. The website gains a matching Support section on the home page and a footer link on every page, and the repo gets a `.github/FUNDING.yml` Sponsor button. MeterMaid stays free, MIT-licensed, and fully featured; nothing is gated.
+
+### Internal
+
+- Bumped the pinned pnpm release from 11.15.0 to 11.15.1 (`packageManager` + lockfile).
+
 ## [0.5.1] - 2026-07-19
 
 ### Internal
