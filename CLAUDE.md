@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-MeterMaid is a cross-platform desktop **LUFS / loudness meter** built with **Tauri 2** — a Rust audio engine (`src-tauri/`) plus a vanilla TypeScript + Vite web UI (`src/`). No frontend framework; the UI is a single `index.html` + `src/main.ts` driving a canvas spectrum. Developed primarily on macOS.
+MeterMaid is a cross-platform desktop **LUFS / loudness meter** built with Tauri 2: a Rust audio engine (`src-tauri/`) plus a **deliberately framework-free** TypeScript UI (`src/`) — a single `index.html` + `src/main.ts` driving a canvas spectrum. Don't introduce a frontend framework. Developed primarily on macOS.
 
 ## Commands
 
@@ -30,7 +30,7 @@ CI (`.github/workflows/ci.yml`) runs `pnpm build`, `cargo fmt --check`, clippy, 
 
 **Frontend ↔ backend IPC** has two directions:
 
-- **Commands** (`src/main.ts` `invoke(...)` → `lib.rs` `#[tauri::command]`): `list_devices`, `get_device_config`, `start_capture`, `stop_capture`, `reset_integrated`. The capture commands forward a `Command` enum over an `mpsc::Sender` to `engine_loop` and wait on a reply `SyncSender` — i.e. command handlers are thin shims; the engine thread does the work.
+- **Commands** (`src/main.ts` `invoke(...)` → `lib.rs` `#[tauri::command]`): the capture commands forward a `Command` enum over an `mpsc::Sender` to `engine_loop` and wait on a reply `SyncSender` — i.e. command handlers are thin shims; the engine thread does the work.
 - **Events** (`lib.rs`/`audio.rs` `emit` → `src/main.ts` `listen`): `meter-update` (per-frame metrics) and `stream-error` (OS stream fault, e.g. device unplugged mid-capture → UI tears down and surfaces the reason).
 
 Rust `Metrics`/`DeviceConfig`/`StreamInfo` use `#[serde(rename_all = "camelCase")]`; the matching TS `interface`s in `main.ts` must stay in sync (snake_case Rust field ↔ camelCase TS field).
@@ -63,12 +63,12 @@ Signing secrets and the full signed-build env are documented in `README.md` ("Co
 
 ## Website (`site/`)
 
-The marketing/landing site (<https://getmetermaid.com>) lives in [`site/`](site) as a monorepo alongside the app — an Eleventy + Edge.js + Tailwind v4 static site, separate from the Tauri toolchain. It is **self-contained**: its own `package.json`, lockfile, and `pnpm-workspace.yaml` (the last isolates it so `pnpm` from `site/` doesn't merge with the app's root workspace). Work on it from inside `site/` (`cd site && pnpm install && pnpm run dev`); see [`site/CLAUDE.md`](site/CLAUDE.md).
+The marketing/landing site (<https://getmetermaid.com>) lives in [`site/`](site) as a self-contained monorepo sibling of the app, with its own toolchain and workspace. Work on it from inside `site/` — **its conventions live in [`site/CLAUDE.md`](site/CLAUDE.md)** and load automatically when you touch files there.
 
-- **No manual version bumps.** The site's version badge, the 6 download buttons, and its JSON-LD are derived from the GitHub Releases API at build time ([`site/src/_data/release.js`](site/src/_data/release.js)) — not hardcoded. A rebuild always reflects whatever is currently the latest published release (with a pinned offline fallback so builds never break).
-- **The site's `/updates/` page has its own musician-facing "What's new" copy** in [`site/content/whatsnew.md`](site/content/whatsnew.md), rendered by [`site/src/_data/whatsnew.js`](site/src/_data/whatsnew.js). This is deliberately **separate from `CHANGELOG.md`**: the site is for musicians, so it must not name internal libraries (cpal, ebur128), build/licensing detail, etc. — that developer record stays in `CHANGELOG.md` and on the GitHub releases page. **At release time, add a short plain-English entry** (`## <version> <YYYY-MM-DD>` + a sentence or a few bullets, no em-dashes) to `whatsnew.md`; omit purely under-the-hood releases. The page refreshes when that change reaches `main` and the site rebuilds.
-- **Deploy is release-driven.** Hosting is Netlify, configured from the repo-root [`netlify.toml`](netlify.toml) (`base = "site"`). Pushes to `main` deploy normally; on top of that, [`.github/workflows/site-deploy.yml`](.github/workflows/site-deploy.yml) pings a Netlify build hook on `release: published`, so cutting a release rebuilds the site at the moment "latest" changes. **This needs a `NETLIFY_BUILD_HOOK` repo secret** (create the hook in Netlify → Site configuration → Build & deploy → Build hooks).
-- If the app's release **asset names** ever change, update `ASSET_MAP` in `site/src/_data/release.js` to match (the same patterns listed under "Release notes / download table" above).
+Two facts that matter from the *app* side:
+
+- **At release time, add a short plain-English entry to [`site/content/whatsnew.md`](site/content/whatsnew.md)** (`## <version> <YYYY-MM-DD>` + a sentence or a few bullets, no em-dashes); omit purely under-the-hood releases. This is deliberately **separate from `CHANGELOG.md`** — the site's audience is musicians, so it must not name internal libraries (cpal, ebur128) or build/licensing detail. The site needs no manual version bump; it reads the GitHub Releases API at build time.
+- **If the release asset names ever change, update `ASSET_MAP` in `site/src/_data/release.js`** to match the patterns listed under "Release notes / download table" above, or the site's download buttons break.
 
 ## Workflow conventions
 

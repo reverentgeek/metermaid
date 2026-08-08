@@ -8,46 +8,13 @@ Marketing / landing site for **MeterMaid** (<https://getmetermaid.com>) — a cr
 
 This `site/` directory lives **inside the metermaid app repo as a monorepo**. The app (Tauri/Rust + TS) is at the repo root; the website is self-contained here with its own `package.json`, lockfile, and `pnpm-workspace.yaml` (the workspace file isolates the site so pnpm doesn't merge it with the app's root workspace). The version and download links are **not hardcoded** — they're fetched from the GitHub Releases API at build time (see `src/_data/release.js`), so a new app release updates the site on its next build.
 
-## Tech Stack
+## Build gotchas
 
-- **Static site generator:** Eleventy (11ty) v3 with ESM (`"type": "module"`)
-- **Templating:** Edge.js via `eleventy-plugin-edgejs` (`.edge` files, not Nunjucks/Liquid)
-- **CSS:** Tailwind CSS v4 (standalone CLI, not PostCSS plugin) with custom theme in `src/css/styles.css`
-- **Tests:** Playwright (accessibility, SEO, and content assertions in `tests/site.spec.js`)
-- **Package manager:** pnpm (isolated workspace — `pnpm install` / `pnpm run …` are run from `site/`)
-- **Hosting:** Netlify, configured from the **repo-root** `../netlify.toml` (`base = "site"`); a `release: published` GitHub Action triggers a deploy (`../.github/workflows/site-deploy.yml`)
-
-## Commands
-
-- `pnpm run dev` — Dev server (11ty serve + Tailwind watch in parallel via `scripts/dev.mjs`)
-- `pnpm run build` — Production build (11ty then Tailwind with minification)
-- `pnpm run build:11ty` / `pnpm run build:css` — Build one half only
-- `pnpm test` — `pnpm build` then Playwright against the built `_site/` (served by `scripts/serve-site.mjs` on :3001)
-- `pnpm run test:install` — One-time `playwright install chromium`
-
-## Architecture
-
-```text
-content/whatsnew.md       # Curated, musician-facing "What's new" copy (one section per release)
-src/
-  index.edge              # Home page (hero, screenshot, features, download, getting started, updates, feedback)
-  updates.edge            # /updates/ — "What's new" page (renders whatsnew.releases)
-  _includes/layouts/
-    base.edge             # Base HTML layout: head/meta/OG, JSON-LD, header, footer
-  _data/site.json         # Static config: canonical URL, repo, links (NOT the version)
-  _data/release.js        # Build-time GitHub API fetch → latest version + download URLs
-  _data/whatsnew.js       # Build-time parse of ../content/whatsnew.md → release summaries
-  css/styles.css          # Tailwind v4 @theme + custom CSS (animations, cards)
-  images/screenshot.png   # App screenshot (copied from the metermaid repo's docs/)
-  sitemap.edge            # XML sitemap template
-  favicon.svg, robots.txt # Static assets (passthrough copy)
-eleventy.config.js        # 11ty config: Edge.js plugin, passthrough copies, dir setup
-```
-
-Edge `@each` / `@if` loops are used in `updates.edge` (and the home page's Updates teaser) to render the changelog; `{{{ item }}}` outputs the pre-rendered (trusted) bullet HTML unescaped.
-
-- **Input:** `src/` → **Output:** `_site/`
-- Tailwind scans `_site/` for classes via `@source "../../_site"` — so **build 11ty before CSS** (the `build` script already orders them).
+- **Templating is Edge.js** (via `eleventy-plugin-edgejs`), **not Nunjucks or Liquid**. `updates.edge` and the home-page teaser use `@each`/`@if`, and `{{{ item }}}` outputs pre-rendered (trusted) bullet HTML unescaped.
+- **Tailwind v4 runs as the standalone CLI**, not the PostCSS plugin, and scans the built output via `@source "../../_site"` — so **build 11ty before CSS**. The `build` script already orders them; don't run `build:css` against a stale `_site/`.
+- **pnpm here is an isolated workspace** (`pnpm-workspace.yaml` keeps it from merging with the app's root workspace) — run `pnpm install` / `pnpm run …` from inside `site/`, never from the repo root.
+- `pnpm test` builds first, then runs Playwright against the built `_site/` (served by `scripts/serve-site.mjs` on :3001). One-time setup: `pnpm run test:install`.
+- **Hosting is Netlify, configured from the repo-root `../netlify.toml`** (`base = "site"`) — not from a config file in this directory. `../.github/workflows/site-deploy.yml` additionally pings a build hook on `release: published`, which **requires a `NETLIFY_BUILD_HOOK` repo secret** (create it in Netlify → Site configuration → Build & deploy → Build hooks).
 
 ## Data: `site.json` (static) and `release.js` (live)
 
@@ -71,6 +38,7 @@ The Playwright suite asserts every download link still resolves to a `…/releas
 - Reads **`site/content/whatsnew.md`** (resolved via `import.meta.url`) into `whatsnew.releases` (each `{ version, date, html }`, newest first) plus `whatsnew.featured` (the newest, for the home-page teaser). Each release is a `## <version> <YYYY-MM-DD>` heading followed by a short markdown body, rendered to HTML with `markdown-it`.
 - **The audience is musicians, not developers.** `content/whatsnew.md` is hand-written plain-English copy — deliberately *not* the repo's `CHANGELOG.md`, which is the developer record and stays on GitHub. Don't wire the site to `CHANGELOG.md`: its entries name internal libraries (cpal, ebur128), build/licensing details, etc. that the target audience doesn't care about. Purely under-the-hood releases are simply omitted from `whatsnew.md`.
 - Auto-updates per release with no API call: add an entry to `content/whatsnew.md`, and the page refreshes on the next site rebuild (the version-bump PR merge to `main`, or the release-published deploy hook). Write it without em-dashes to keep the site consistent.
+- **At release time, add a short plain-English entry** (`## <version> <YYYY-MM-DD>` plus a sentence or a few bullets) to `content/whatsnew.md`. Omit purely under-the-hood releases.
 
 ## Design System
 
