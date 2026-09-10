@@ -16,6 +16,10 @@
 
 # What's new
 
+## 0.5.3 2026-09-10
+
+More under-the-hood housekeeping. This release refreshes the components MeterMaid is built on, including a handful of security fixes, so the app stays current and dependable on macOS, Windows, and Linux. Nothing changes in how MeterMaid looks or works.
+
 ## 0.5.2 2026-07-20
 
 You can now buy me a coffee. MeterMaid is free and open source, and it stays that way, but if it has earned a place in your studio there is a tip link in the About dialog and on this site. Entirely optional, and nothing in the app is gated behind it.
