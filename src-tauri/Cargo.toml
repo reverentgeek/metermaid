@@ -29,7 +29,12 @@ tauri-plugin-process = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-cpal = "0.18"
+# 0.18.2 is a floor, not a preference: it is the release that declares `windows`
+# and `windows-core` as a matched 0.62 pair. 0.18.1 declared each independently
+# as ">=0.61, <=0.62", which let them resolve to different lines and broke the
+# WASAPI backend's `implement` macro — the reason this crate used to carry a
+# `windows-core = "0.61"` pin. Don't relax this below 0.18.2.
+cpal = "0.18.2"
 ebur128 = "0.1"
 rustfft = "6"
 ringbuf = "0.4"
@@ -67,16 +72,5 @@ block2 = "0.6"
 # libclang (bindgen) + the MSVC C++ toolchain and `CPAL_ASIO_DIR` pointing at
 # the Steinberg ASIO SDK. Cargo unifies this with the base `cpal` dependency.
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
-cpal = { version = "0.18", features = ["asio"] }
-
-# cpal 0.18 declares `windows` and `windows-core` as independent dependencies
-# (each ">=0.61, <=0.62"). Tauri's `tao` pins `windows` to 0.61, but nothing
-# constrains `windows-core`, so it floats to 0.62 — and cpal's WASAPI backend
-# uses the `implement` macro from `windows` 0.61 while referencing
-# `windows-core` 0.62 types, which don't match (build fails with
-# "IActivateAudioInterfaceCompletionHandler: windows_core::Interface is not
-# satisfied"). Pin `windows-core` to the 0.61 line so it matches the resolved
-# `windows` crate. Applies to all Windows targets (WASAPI), not just ASIO.
-[target.'cfg(windows)'.dependencies]
-windows-core = "0.61"
+cpal = { version = "0.18.2", features = ["asio"] }
 
