@@ -67,6 +67,7 @@ const SPECTRUM_PEAK_DECAY_DB_PER_SEC = 36; // spectrum peak-hold fall
 const MAX_TICK_SEC = 0.1;
 
 let running = false;
+let capturePending = false; // Serialize Start/Stop from buttons and shortcuts.
 let latest: Metrics | null = null;
 let peaks: number[] = []; // smoothed spectrum peak-hold per band
 // Persistent per-band maximum (no decay). Deliberately survives Stop/Start and
@@ -143,6 +144,26 @@ const freezeRefBtn = $<HTMLButtonElement>("freezeRef");
 const clearRefBtn = $<HTMLButtonElement>("clearRef");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
+
+// Input types that swallow typed characters. Anything else (checkbox, button,
+// range, …) leaves plain letters unused, so the letter shortcuts may claim them.
+const TEXT_INPUT_TYPES = new Set([
+	"text",
+	"number",
+	"search",
+	"email",
+	"url",
+	"tel",
+	"password",
+]);
+
+// True when focus sits somewhere that consumes typed characters, i.e. where a
+// single-letter shortcut would eat the user's keystroke.
+const isTextEntry = (el: HTMLElement | null) =>
+	!!el &&
+	(el.isContentEditable ||
+		!!el.closest("textarea, [role='textbox']") ||
+		(el instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(el.type)));
 
 // ---- Persisted settings (tauri-plugin-store) -----------------------------
 // Device/channel/rate/target/ceiling/auto-start survive across launches. We
@@ -543,6 +564,8 @@ async function refreshDeviceConfig() {
 }
 
 async function start() {
+	if (capturePending || running) return;
+	capturePending = true;
 	try {
 		const channels = channelSelect.value
 			? channelSelect.value.split(",").map(Number)
@@ -579,6 +602,8 @@ async function start() {
 		requestFrame(); // start the render loop (it self-sustains while running)
 	} catch (e) {
 		reportError("Start capture", e);
+	} finally {
+		capturePending = false;
 	}
 }
 
@@ -618,13 +643,21 @@ function teardownRunningUi() {
 }
 
 async function stop() {
+	if (capturePending || !running) return;
+	capturePending = true;
 	try {
-		await invoke("stop_capture");
-	} catch (e) {
-		reportError("Stop capture", e);
+		try {
+			await invoke("stop_capture");
+		} catch (e) {
+			reportError("Stop capture", e);
+		}
+		teardownRunningUi();
+		setStatus("stopped", "idle");
+	} finally {
+		// Mirror start(): a throw in teardown must not latch capture off for
+		// the rest of the session, silently killing every later Start/Stop.
+		capturePending = false;
 	}
-	teardownRunningUi();
-	setStatus("stopped", "idle");
 }
 
 // The audio engine emits this when the OS reports a fault that ends the
@@ -1205,6 +1238,36 @@ window.addEventListener("DOMContentLoaded", async () => {
 	aboutClose.addEventListener("click", hideAbout);
 	document.addEventListener("keydown", (e) => {
 		if (e.key === "Escape" && !aboutModal.hidden) hideAbout();
+		// Letter shortcuts defer to text entry and system shortcuts — but not to
+		// every focusable control. Nothing blurs the device <select> after a
+		// pick, so excluding selects/buttons left S and M dead through the most
+		// common flow of all: launch, choose a device, press S. The trade is
+		// single-letter typeahead on a focused-but-closed <select>; arrow keys
+		// and typeahead inside the open popup are untouched, since the OS-level
+		// popup never forwards keys here.
+		const target = e.target instanceof HTMLElement ? e.target : null;
+		if (
+			!e.defaultPrevented &&
+			!e.repeat &&
+			!e.isComposing &&
+			!e.ctrlKey &&
+			!e.metaKey &&
+			!e.altKey &&
+			!e.shiftKey &&
+			aboutModal.hidden &&
+			!isTextEntry(target)
+		) {
+			if (e.key.toLowerCase() === "s") {
+				e.preventDefault();
+				// start()/stop() each no-op unless their precondition holds.
+				if (running) void stop();
+				else void start();
+			} else if (e.key.toLowerCase() === "m") {
+				e.preventDefault();
+				maxHoldInput.click(); // Reuse the checkbox's persistence and repaint.
+			}
+		}
+
 		// Space resets the measurement — the leveling loop hits Reset constantly
 		// between patches, so a shortcut tightens the core workflow. Gated on the
 		// Reset button being visible (i.e. capturing) and on focus not being in a

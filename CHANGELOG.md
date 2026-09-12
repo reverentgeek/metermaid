@@ -4,6 +4,22 @@ All notable changes to MeterMaid are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-12
+
+### Added
+
+- **Keyboard shortcuts for the leveling loop.** **S** starts and stops capture and **M** toggles spectrum Max hold, joining the existing **Space** for Reset. Both are documented in the README, on the website, and in the Start/Stop/Max hold tooltips. They fire only with no modifier held, ignore auto-repeat, and stand down while the About dialog is open or focus is in a text field (Target, Clip ceiling) — but not merely because a dropdown or button holds focus, so they stay live through the usual flow of picking a device and pressing S. The trade is single-letter typeahead on a focused-but-closed dropdown; arrow keys and typeahead inside an open dropdown are untouched, since the OS-level popup never forwards keys to the page.
+
+### Fixed
+
+- **Start/Stop could latch off permanently.** `stop()` cleared its in-flight guard outside a `try`/`finally`, so a throw during UI teardown left `capturePending` stuck true and silently killed every later Start and Stop for the rest of the session. It is now symmetric with `start()`.
+
+### Internal
+
+- Frontend toolchain: Vite 8.2.2 → 8.3.0 and Biome 2.5.12 → 2.5.13 (with `biome.json`'s `$schema` migrated to match).
+- Ignored pnpm's local `.pnpm-store/` content-addressable cache.
+- Restored the website's alternating section backgrounds after the new Keyboard shortcuts section shifted their parity.
+
 ## [0.5.3] - 2026-09-10
 
 ### Internal

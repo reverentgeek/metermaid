@@ -38,8 +38,20 @@ Because it averages everything heard so far, **Apply** won't jump when you chang
 So to dial in a level:
 
 1. Make your change (e.g., adjust the patch or guitar volume).
-2. Click **Reset**. Reset restarts the integrated measurement while keeping the audio device running.
+2. Click **Reset** or press **Space** (when focus is outside an input, dropdown, or button). Reset restarts the integrated measurement while keeping the audio device running.
 3. Play for a few representative seconds, and **Apply** will settle on the new suggested gain.
+
+## Keyboard shortcuts
+
+With the MeterMaid window active:
+
+| Key | Action |
+| --- | --- |
+| S | Start / stop capture. |
+| Space | Reset the measurement while capturing, keeping the audio device running. Ignored when an input, dropdown, or button has focus. |
+| M | Toggle spectrum Max Hold. |
+
+S and M work whenever focus is outside a text field (Target, Clip ceiling) and the About dialog is closed. Picking a device or clicking a button leaves them live. Hold no modifier keys; holding the letter down does not repeat the action.
 
 ## Audio source
 
