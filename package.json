@@ -1,7 +1,7 @@
 {
   "name": "metermaid",
   "private": true,
-  "version": "0.5.3",
+  "version": "0.6.0",
   "type": "module",
   "packageManager": "pnpm@11.26.0+sha512.fc0e2bf890b9f983611f1ab68c0637bce914390653699f83c1a78b005ed25f2c81e77920c8fd8eee2ecf0b58b28cdcb00a84d97f69bcf7c56b2f344710238664",
   "description": "MeterMaid — a cross-platform LUFS / loudness meter built with Tauri",
@@ -32,12 +32,12 @@
     "@tauri-apps/plugin-updater": "^2.11.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.12",
+    "@biomejs/biome": "^2.5.13",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@tauri-apps/cli": "^2.11.4",
     "markdownlint-cli2": "^0.23.2",
     "typescript": "~7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.0"
   }
 }
