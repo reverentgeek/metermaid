@@ -122,11 +122,44 @@ jobs:
       # x86_64-pc-windows-msvc). It compiles the vendored SDK's C++ via the `cc`
       # crate (needs the MSVC toolchain) and runs bindgen (needs libclang). The
       # ARM64 Windows leg has no ASIO SDK and is built WASAPI-only.
+      # Sets up the MSVC toolchain the way vcvars64.bat does: run it in a child
+      # cmd, then carry the environment it produced back into the job (new PATH
+      # entries via $GITHUB_PATH, everything else via $GITHUB_ENV). This replaces
+      # ilammy/msvc-dev-cmd, which is unmaintained (last commit March 2024) and
+      # still declares `using: node20`, so Actions force-runs it on Node 24 and
+      # warns on every build. There is no newer tag to bump to.
       - name: Set up MSVC environment (Windows x64 / ASIO)
         if: matrix.target == 'x86_64-pc-windows-msvc'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $install = & $vswhere -latest -products '*' `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if (-not $install) { throw 'vswhere found no Visual Studio install with the x64 C++ toolset' }
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found at $vcvars" }
+
+          # Snapshot the pre-vcvars environment so only what vcvars actually
+          # changed is exported (PowerShell hashtable keys are case-insensitive,
+          # matching Windows env var semantics).
+          $before = @{}
+          Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          $oldPath = $env:PATH -split ';'
+
+          # `call` first so the command does not start with a quote, which cmd
+          # would strip along with the closing one.
+          cmd /c "call `"$vcvars`" >nul && set" | ForEach-Object {
+            $name, $value = $_ -split '=', 2
+            if (-not $name -or $null -eq $value) { return }
+            if ($name -eq 'PATH') {
+              ($value -split ';') |
+                Where-Object { $_ -and ($oldPath -notcontains $_) } |
+                Add-Content -Path $env:GITHUB_PATH -Encoding utf8
+            } elseif ($before[$name] -ne $value) {
+              "$name=$value" | Add-Content -Path $env:GITHUB_ENV -Encoding utf8
+            }
+          }
 
       - name: Configure ASIO build env (Windows x64 / ASIO)
         if: matrix.target == 'x86_64-pc-windows-msvc'
