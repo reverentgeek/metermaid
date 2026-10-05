@@ -37,7 +37,7 @@ serde_json = "1"
 cpal = "0.18.2"
 ebur128 = "0.1"
 rustfft = "6"
-ringbuf = "0.4"
+ringbuf = "0.5"
 
 # The self-updater is desktop-only (no mobile target).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
