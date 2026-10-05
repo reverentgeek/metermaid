@@ -4,6 +4,15 @@ All notable changes to MeterMaid are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-10-05
+
+### Internal
+
+- Refreshed the Rust dependency tree (`cargo update`) and raised ringbuf 0.4 → 0.5. This clears RUSTSEC-2026-0293 (`ringbuf` < 0.5.2, a double free / use-after-free in `Consumer::skip` and `Consumer::clear` when an element's `Drop` panics; not reachable here, since the capture ring holds `f32` and is only driven through `push_slice`/`pop_slice`) and RUSTSEC-2026-0285 (`rustls` 0.23.44 → 0.23.45, TLS 1.3 handshake messages accepted across encryption-level boundaries, on the self-updater's download path). ringbuf 0.5 needed no code changes in `audio.rs`. Also moves tauri 2.11.5 → 2.12.1, tauri-build 2.6.3 → 2.7.1, tauri-plugin-updater 2.11.0 → 2.13.1, tauri-plugin-opener 2.5.5 → 2.7.0, tauri-plugin-store 2.4.4 → 2.5.0, tauri-plugin-process 2.3.1 → 2.4.0, tauri-plugin-window-state 2.4.1 → 2.5.0, and objc2 0.6.4 → 0.6.5. `cargo audit` is clean.
+- Refreshed the frontend dependencies to match: @tauri-apps/api and @tauri-apps/cli → 2.12.1, @tauri-apps/plugin-updater 2.11.0 → 2.13.1, @tauri-apps/plugin-opener 2.5.5 → 2.7.0, @tauri-apps/plugin-store → 2.5.0, @tauri-apps/plugin-process 2.3.1 → 2.4.0, Vite 8.3.0 → 8.3.2, Biome 2.5.13 → 2.5.15, and markdownlint-cli2 0.23.2 → 0.23.3. This clears three of the four advisories in markdownlint-cli2's dev-only transitive tree (`smol-toml`, `markdown-it`, `js-yaml`); the remaining `braces` advisory has no patched release yet.
+- Refreshed the website dependencies: markdown-it 14.3.1 → 15.0.2 and eleventy-plugin-edgejs 1.1.25 → 1.1.28, plus a lockfile refresh that clears the `brace-expansion` advisories in Eleventy's build-time tree. The built site is byte-identical before and after.
+- Bumped the pinned pnpm release from 11.26.0 to 12.9.1 for the app (`packageManager` + lockfile).
+
 ## [0.6.0] - 2026-09-12
 
 ### Added
