@@ -16,6 +16,10 @@
 
 # What's new
 
+## 0.6.1 2026-10-05
+
+Another round of under-the-hood housekeeping. This release refreshes the components MeterMaid is built on, including a couple of security fixes, so the app stays current and dependable on macOS, Windows, and Linux. Nothing changes in how MeterMaid looks or works.
+
 ## 0.6.0 2026-09-12
 
 Hands-free control while you play. You can now start and stop metering with the S key, and toggle Max hold with M, on top of the existing Space to reset between patches. The shortcuts keep working right after you choose an input device, so you can set up once and then keep your hands on your instrument.
