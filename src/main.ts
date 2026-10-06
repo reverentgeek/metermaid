@@ -171,6 +171,7 @@ const plots = $<HTMLElement>("plots");
 const metersPanel = $<HTMLDivElement>("metersPanel");
 const metersWrap = $<HTMLDivElement>("metersWrap");
 const spectrumPanel = $<HTMLDivElement>("spectrumPanel");
+const maxHoldHint = $<HTMLSpanElement>("maxHoldHint");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
 const metersCanvas = $<HTMLCanvasElement>("meters");
@@ -817,6 +818,8 @@ function syncMeterHeads() {
 function applyView() {
 	metersWrap.hidden = !showMeters;
 	spectrumPanel.hidden = !showSpectrum;
+	// The max-hold shortcut is only worth advertising with the spectrum up.
+	maxHoldHint.hidden = !showSpectrum;
 	plots.classList.toggle("no-bars", !showMeters);
 	document.body.classList.toggle("compact", compact);
 	compactToggle.textContent = compact ? "Expand" : "Compact";

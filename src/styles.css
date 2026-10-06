@@ -707,6 +707,44 @@ body {
   display: none;
 }
 
+/* ---- Shortcut hints ---- */
+/* A quiet strip along the bottom listing the most useful keyboard shortcuts.
+   Dropped in compact view, where every pixel goes to the meters. */
+.shortcut-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 6px 16px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.shortcut-title {
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.shortcut {
+  white-space: nowrap;
+}
+
+.shortcut kbd {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 4px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-align: center;
+}
+
 /* ---- Compact view ---- */
 /* Strips the window down to the transport, the input picker, and the plots, so
    several meter windows can be tiled side by side on one display. Error and
@@ -717,6 +755,7 @@ body.compact .config-row,
 body.compact .target-row,
 body.compact .spectrum-controls,
 body.compact .hint,
+body.compact .shortcut-bar,
 body.compact .toolbar .label-full {
   display: none;
 }
