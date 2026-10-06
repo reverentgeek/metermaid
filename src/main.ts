@@ -1284,14 +1284,22 @@ function drawMeters() {
 		}
 	}
 
-	// Target line across the loudness bars, ceiling line across the true peak,
-	// each labelled in place.
+	// Target line across the loudness bars, ceiling line across the true peak.
+	// Each label sits in a gap beside a bar — between Integrated and Short-term
+	// for the target, left of the true-peak bar for the ceiling — never on a
+	// bar, where it would hide the bar's top edge right at the limit.
+	const gutter = (slot - barW) / 2;
 	if (hasTarget) {
-		meterLimitLine(pl, loudW, toY(target), pt, "rgba(110, 168, 254, 0.95)", [
-			`target ${target} LUFS`,
-			`target ${target}`,
-			`${target}`,
-		]);
+		meterLimitLine(
+			pl,
+			loudW,
+			toY(target),
+			pt,
+			"rgba(110, 168, 254, 0.95)",
+			[`target ${target} LUFS`, `target ${target}`, `${target}`],
+			pl + slot - gutter,
+			gutter * 2,
+		);
 	}
 	if (hasCeil) {
 		meterLimitLine(
@@ -1301,13 +1309,15 @@ function drawMeters() {
 			pt,
 			"rgba(255, 93, 93, 0.95)",
 			[`ceiling ${ceil} dBTP`, `ceiling ${ceil}`, `${ceil}`],
+			pl + loudW,
+			gutter,
 		);
 	}
 }
 
-// Dashed limit line spanning [x, x + width] with its label on a dark tag, so
-// the text stays legible over a bar. `labels` runs longest to shortest; the
-// first one that fits the span is used.
+// Dashed limit line spanning [x, x + width], labelled on a dark tag centered
+// in the bar-free gap [gapX, gapX + gapW]. `labels` runs longest to shortest;
+// the first one that fits the gap is used, and none is drawn if none fits.
 function meterLimitLine(
 	x: number,
 	width: number,
@@ -1315,6 +1325,8 @@ function meterLimitLine(
 	plotTop: number,
 	color: string,
 	labels: string[],
+	gapX: number,
+	gapW: number,
 ) {
 	const y = Math.round(yRaw) + 0.5;
 	mctx.strokeStyle = color;
@@ -1325,18 +1337,19 @@ function meterLimitLine(
 	mctx.stroke();
 	mctx.setLineDash([]);
 
-	const text = labels.find((t) => mctx.measureText(t).width + 10 <= width);
+	const text = labels.find((t) => mctx.measureText(t).width + 6 <= gapW);
 	if (!text) return;
-	const tw = mctx.measureText(text).width;
+	const tagW = mctx.measureText(text).width + 6;
 	const tagH = 13;
+	const left = Math.round(gapX + (gapW - tagW) / 2);
 	// Above the line, unless that would run off the top of the plot.
 	const top = y - 3 - tagH < plotTop ? y + 3 : y - 3 - tagH;
 	mctx.fillStyle = "rgba(12, 14, 19, 0.88)";
-	mctx.fillRect(x + 2, top, tw + 8, tagH);
+	mctx.fillRect(left, top, tagW, tagH);
 	mctx.fillStyle = color;
 	mctx.textAlign = "left";
 	mctx.textBaseline = "middle";
-	mctx.fillText(text, x + 6, top + tagH / 2 + 0.5);
+	mctx.fillText(text, left + 3, top + tagH / 2 + 0.5);
 }
 
 let rafPending = false;

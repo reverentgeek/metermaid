@@ -42,24 +42,31 @@
     </header>
 
     <div id="settingsPanel" class="config-row" hidden>
-      <label for="channels">Channels</label>
-      <select id="channels" class="cfg-select" title="Source channels to meter"></select>
-      <label for="rate">Sample rate</label>
-      <select id="rate" class="cfg-select" title="Sample rate"></select>
-      <span class="spacer"></span>
-      <label class="check" title="Show the vertical loudness and true-peak bar meters">
-        <input id="showMeters" type="checkbox" checked />
-        Bar meters
-      </label>
-      <label class="check" title="Show the spectrum analyzer and its tools">
-        <input id="showSpectrum" type="checkbox" />
-        Spectrum analyzer
-      </label>
-      <label class="check" title="Start capturing automatically on launch when the saved device is available">
-        <input id="autostart" type="checkbox" />
-        Auto-start
-      </label>
-      <button id="updateCheck" class="btn btn-small" type="button" title="Check for a newer version of MeterMaid">Check for updates</button>
+      <div class="cfg-group">
+        <span class="cfg-field">
+          <label for="channels">Channels</label>
+          <select id="channels" class="cfg-select" title="Source channels to meter"></select>
+        </span>
+        <span class="cfg-field">
+          <label for="rate">Sample rate</label>
+          <select id="rate" class="cfg-select" title="Sample rate"></select>
+        </span>
+      </div>
+      <div class="cfg-group">
+        <label class="check" title="Show the vertical loudness and true-peak bar meters">
+          <input id="showMeters" type="checkbox" checked />
+          Bar meters
+        </label>
+        <label class="check" title="Show the spectrum analyzer and its tools">
+          <input id="showSpectrum" type="checkbox" />
+          Spectrum analyzer
+        </label>
+        <label class="check" title="Start capturing automatically on launch when the saved device is available">
+          <input id="autostart" type="checkbox" />
+          Auto-start
+        </label>
+        <button id="updateCheck" class="btn btn-small" type="button" title="Check for a newer version of MeterMaid">Check for updates</button>
+      </div>
     </div>
 
     <div id="resetHint" class="hint" hidden>

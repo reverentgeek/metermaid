@@ -316,11 +316,17 @@ body {
 }
 
 /* ---- Config row ---- */
+/* Two groups, the capture selects and the display toggles, pushed to opposite
+   ends. When the row runs out of width the toggles drop to a second line as a
+   unit (space-between leaves a lone group at the left edge) instead of
+   stranding the last one or two; only then does a group wrap internally, and a
+   label never parts from its select. */
 .config-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
+  justify-content: space-between;
+  gap: 8px 16px;
   padding: 8px 16px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
@@ -332,6 +338,20 @@ body {
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.6px;
+}
+
+.cfg-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.cfg-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .cfg-select {
@@ -354,6 +374,7 @@ body {
   text-transform: none;
   letter-spacing: 0;
   font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -812,21 +833,38 @@ body.compact .plots {
 }
 
 /* ---- Narrow window ---- */
-/* The toolbar no longer fits one line below ~900px: let it wrap, with the
-   input picker on its own line rather than squeezed to a stub. */
+/* The toolbar no longer fits one line below ~900px, so it splits into two
+   deliberate rows instead of wrapping wherever it runs out: the transport and
+   status on top, then the input picker with Settings and Compact beside it.
+   The zero-height ::after is the forced line break between them. */
 @media (max-width: 899px) {
   .toolbar {
     flex-wrap: wrap;
     row-gap: 6px;
   }
 
+  .toolbar::after {
+    content: "";
+    order: 9;
+    flex-basis: 100%;
+    height: 0;
+  }
+
   .device-select {
     order: 10;
-    flex: 1 0 100%;
+  }
+
+  body:not(.compact) #settingsToggle {
+    order: 11;
+  }
+
+  body:not(.compact) #compactToggle {
+    order: 12;
   }
 
   .status {
     min-width: 0;
+    margin-left: auto;
   }
 }
 
@@ -837,8 +875,13 @@ body.compact .plots {
     row-gap: 6px;
   }
 
-  .brand span {
+  .brand span,
+  .toolbar .label-full {
     display: none;
+  }
+
+  .toolbar .label-short {
+    display: inline;
   }
 
   .plots {
