@@ -16,7 +16,7 @@
         "title": "MeterMaid",
         "width": 960,
         "height": 720,
-        "minWidth": 720,
+        "minWidth": 320,
         "minHeight": 560
       }
     ],
