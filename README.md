@@ -23,9 +23,24 @@ macOS builds are signed with an Apple Developer ID and **notarized** by Apple, s
 - **Integrated** loudness (gated), LUFS — the overall "how loud is this patch" number
 - **Short-term** (3 s) and **Momentary** (400 ms) loudness, LUFS
 - **Loudness Range (LRA)**, LU
-- **True Peak**, dBTP
-- **Spectrum analyzer** — log-frequency, peak-hold, with dB and frequency grid
-- **Leveling target / suggested gain** helper — set a target LUFS, and it shows the gain change that would get you there
+- **True Peak**, dBTP — one bar per channel for a stereo pair
+- **Bar meters** — vertical bars for True Peak, Momentary, Short-term, and Integrated, in that order. True Peak and Momentary carry a marker that holds the recent peak briefly and then falls back; Short-term has a marker that follows the bar slowly. The numbers above those bars show the marker, so they stay readable.
+- **Spectrum analyzer** (optional, off by default) — log-frequency, peak-hold, with dB and frequency grid
+- **Leveling target / suggested gain** helper — set a target LUFS (−23 by default), and it shows the gain change that would get you there
+
+### Loudness scales
+
+**Settings → Loudness scale** sets the range of the Momentary, Short-term, and Integrated bars:
+
+| Scale | Range | Leveling target |
+| --- | --- | --- |
+| Full range | −60 to +3, shared with the true-peak scale | Yours |
+| EBU +9 | −18 to +9 LU | Fixed at −23 LUFS (EBU R 128) |
+| EBU +18 | −36 to +18 LU | Fixed at −23 LUFS (EBU R 128) |
+| +9 LU | −18 to +9 LU | Yours |
+| +18 LU | −36 to +18 LU | Yours |
+
+On the four LU scales, 0 LU is the leveling target and the bars are green below −1 LU, yellow within ±1 LU, and red above +1 LU. The EBU scales lock the leveling target control and show an **EBU R 128** tag; your own target comes back when you choose another scale. Readouts stay in LUFS on every scale.
 
 The loudness math uses the [`ebur128`](https://crates.io/crates/ebur128) crate (a pure-Rust implementation of BS.1770, the same algorithm behind ffmpeg's `ebur128` filter). Audio is captured with [`cpal`](https://crates.io/crates/cpal), and the spectrum is computed using [`rustfft`](https://crates.io/crates/rustfft).
 
@@ -62,7 +77,7 @@ The app meters any **input device** the OS exposes. To meter a hardware unit’s
 
 ## Settings
 
-MeterMaid remembers your setup between launches: the window size, position, and monitor, as well as the selected device, channels, sample rate, target LUFS, and clip ceiling. Restored selections are re-validated against the hardware actually present. If the saved device is gone, it falls back to the system default with a notice, and invalid channels or sample rates fall back gracefully. If the monitor the window was last on has been disconnected, the window is recentered on an available display rather than restored off-screen.
+MeterMaid remembers your setup between launches: the window size, position, and monitor, as well as the selected device, channels, sample rate, target LUFS, clip ceiling, loudness scale, and the display options in the Settings panel (bar meters, true-peak readout, Momentary / Short-term readouts, suggested gain, spectrum analyzer, compact view). Restored selections are re-validated against the hardware actually present. If the saved device is gone, it falls back to the system default with a notice, and invalid channels or sample rates fall back gracefully. If the monitor the window was last on has been disconnected, the window is recentered on an available display rather than restored off-screen.
 
 Enable **Auto-start** to begin capturing on launch whenever a valid saved device and channels are restored.
 

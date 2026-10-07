@@ -4,6 +4,29 @@ All notable changes to MeterMaid are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-07
+
+### Added
+
+- **Vertical loudness bar meters.** True Peak, Momentary, Short-term, and Integrated each get a bar under their numeric readout, in that order (fastest to slowest). The leveling target and clip ceiling are drawn as labelled lines across the bars. The meters resize with the window and are the default view.
+- **Stereo true peak.** The engine now reports live and held true peak per metered channel (`Metrics.true_peak_ch_db` / `true_peak_ch_max_db`), so a stereo pair draws separate L and R bars. Covered by a new golden-signal test.
+- **Loudness scale setting.** Besides the full-range scale shared with true peak, there are the EBU Tech 3341 ranges: **EBU +9** (−18 to +9 LU) and **EBU +18** (−36 to +18 LU), which fix the leveling target at −23 LUFS, lock its control, and show an "EBU R 128" tag beside the target and under the bars; and **+9 LU** / **+18 LU**, the same ranges around the user's own target. On the LU scales the bars are green below −1 LU, yellow within ±1 LU, and red above +1 LU, with an LU axis on the right.
+- **Markers on the bars.** True Peak and Momentary get a marker that holds the recent peak for 1.5 s and then falls back; Short-term gets a slow follower. The True Peak, Momentary, and Short-term numbers show their marker so they are readable.
+- **Compact view** (**C**). Strips the window down to the transport, the input picker, and the plots. The minimum window width drops from 720 to 320.
+- **Settings panel.** Channels, sample rate, loudness scale, auto-start, the update check, and the display toggles live here: bar meters, true-peak readout, Momentary / Short-term readouts, suggested gain, and spectrum analyzer. All persist in `settings.json`.
+- **"Measured for" timer** beside Reset, and a keyboard-shortcut hints bar along the bottom of the window.
+
+### Changed
+
+- **The spectrum analyzer is now optional and off by default.** Its tools (guide, max hold, reference) moved into the spectrum panel and show and hide with it.
+- **The default leveling target is now −23 LUFS** (was −20), the EBU R 128 level. Only affects fresh installs; a previously saved target is still restored.
+- The leveling helper is relabelled "Leveling target", "Suggested gain", and "Clip ceiling", and Reset is "Reset measurement".
+- The true-peak scale is labelled every 5 dB, with +3 at the top, when the window is tall enough.
+
+### Internal
+
+- Added a `beta-release` skill for cutting prerelease test builds that existing installs and the website ignore.
+
 ## [0.6.1] - 2026-10-05
 
 ### Internal
