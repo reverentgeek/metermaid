@@ -472,12 +472,14 @@ body {
   font-size: 9px;
 }
 
-/* Live readouts off (Settings): the True Peak, Momentary, and Short-term heads
-   keep their label (and the CLIP flag) so the bars stay identified, but drop
-   their numbers, leaving Integrated + LRA as the only figures. */
-.meters-panel.no-live-readouts .meter-head.live .value,
-.meters-panel.no-live-readouts .meter-head.live .unit,
-.meters-panel.no-live-readouts .meter-head.live .subvalue {
+/* Readouts off (Settings): a head keeps its label (and the CLIP flag) so the
+   bar stays identified, but drops its numbers. True Peak and Momentary /
+   Short-term are switched separately; Integrated + LRA always show. */
+.meters-panel.no-tp-readout #tpCard .value,
+.meters-panel.no-tp-readout #tpCard .unit,
+.meters-panel.no-tp-readout #tpCard .subvalue,
+.meters-panel.no-ms-readouts .meter-head.ms .value,
+.meters-panel.no-ms-readouts .meter-head.ms .unit {
   display: none;
 }
 
@@ -525,6 +527,22 @@ body {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   font-size: 13px;
+  /* Whole controls drop to a second line when the row runs out (the EBU tag
+     adds width at any window size) rather than squeezing their labels. */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.target-row label,
+.target-row .delta {
+  white-space: nowrap;
+}
+
+/* A label, its field, and its unit wrap as one piece. */
+.target-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .target-row label {
@@ -626,6 +644,23 @@ body {
 .unit-inline {
   color: var(--muted);
   font-size: 11px;
+}
+
+/* The target is pinned (and its control locked) on an EBU loudness scale. */
+.num-field.locked {
+  opacity: 0.6;
+}
+
+.ebu-tag:not([hidden]) {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(110, 168, 254, 0.5);
+  color: rgb(110, 168, 254);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
 }
 
 .spacer {
@@ -900,11 +935,6 @@ body.compact .plots {
 
 /* Below the old 720px minimum the target row wraps too and the plots stack. */
 @media (max-width: 719px) {
-  .target-row {
-    flex-wrap: wrap;
-    row-gap: 6px;
-  }
-
   .brand span,
   .toolbar .label-full {
     display: none;

@@ -53,10 +53,12 @@
         </span>
         <span class="cfg-field">
           <label for="meterScale">Loudness scale</label>
-          <select id="meterScale" class="cfg-select" title="Range of the Momentary, Short-term, and Integrated bars. The +9 and +18 scales are in LU around the leveling target (EBU mode when the target is −23 LUFS): green below −1 LU, yellow within ±1 LU, red above +1 LU.">
+          <select id="meterScale" class="cfg-select" title="Range of the Momentary, Short-term, and Integrated bars. The +9 and +18 scales are in LU around the leveling target: green below −1 LU, yellow within ±1 LU, red above +1 LU. The EBU scales fix the target at −23 LUFS (EBU R 128); the LU scales use your own target.">
             <option value="full">Full range</option>
-            <option value="9">EBU +9</option>
-            <option value="18">EBU +18</option>
+            <option value="ebu9">EBU +9</option>
+            <option value="ebu18">EBU +18</option>
+            <option value="lu9">+9 LU</option>
+            <option value="lu18">+18 LU</option>
           </select>
         </span>
       </div>
@@ -65,9 +67,13 @@
           <input id="showMeters" type="checkbox" checked />
           Bar meters
         </label>
-        <label class="check" title="Show the numbers above the True Peak, Momentary, and Short-term bars. Turn off to leave only Integrated and LRA.">
-          <input id="showLiveReadouts" type="checkbox" checked />
-          TP / M / S readouts
+        <label class="check" title="Show the numbers above the True Peak bars">
+          <input id="showTpReadout" type="checkbox" checked />
+          True peak readout
+        </label>
+        <label class="check" title="Show the numbers above the Momentary and Short-term bars">
+          <input id="showMsReadouts" type="checkbox" checked />
+          M / S readouts
         </label>
         <label class="check" title="Show the spectrum analyzer and its tools">
           <input id="showSpectrum" type="checkbox" />
@@ -108,46 +114,51 @@
     </div>
 
     <section class="target-row">
-      <label for="target" title="The loudness you are leveling to — drives the suggested gain and the target band on the loudness bars">Leveling target</label>
-      <div class="num-field">
-        <input id="target" class="num-input" type="number" value="-23" step="0.5" />
-        <span class="num-steppers">
-          <button type="button" class="num-step" data-for="target" data-dir="up" tabindex="-1" aria-label="Increase target"></button>
-          <button type="button" class="num-step" data-for="target" data-dir="down" tabindex="-1" aria-label="Decrease target"></button>
-        </span>
+      <div class="target-group">
+        <label for="target" title="The loudness you are leveling to — drives the suggested gain and the target band on the loudness bars">Leveling target</label>
+        <div class="num-field">
+          <input id="target" class="num-input" type="number" value="-23" step="0.5" />
+          <span class="num-steppers">
+            <button type="button" class="num-step" data-for="target" data-dir="up" tabindex="-1" aria-label="Increase target"></button>
+            <button type="button" class="num-step" data-for="target" data-dir="down" tabindex="-1" aria-label="Decrease target"></button>
+          </span>
+        </div>
+        <span class="unit-inline">LUFS</span>
+        <span id="ebuTag" class="ebu-tag" hidden title="An EBU loudness scale is selected, which fixes the leveling target at −23 LUFS. Choose another Loudness scale in Settings to set your own target.">EBU R 128</span>
       </div>
-      <span class="unit-inline">LUFS</span>
 
       <span class="spacer"></span>
       <div class="delta" id="delta" title="Gain change that would bring the Integrated loudness to the leveling target"><span class="delta-label">Suggested gain</span> <strong>—</strong></div>
       <span class="spacer"></span>
 
-      <label for="ceiling" title="True-peak level that counts as clipping">Clip ceiling</label>
-      <div class="num-field">
-        <input id="ceiling" class="num-input" type="number" value="-1" step="0.5" />
-        <span class="num-steppers">
-          <button type="button" class="num-step" data-for="ceiling" data-dir="up" tabindex="-1" aria-label="Increase ceiling"></button>
-          <button type="button" class="num-step" data-for="ceiling" data-dir="down" tabindex="-1" aria-label="Decrease ceiling"></button>
-        </span>
+      <div class="target-group">
+        <label for="ceiling" title="True-peak level that counts as clipping">Clip ceiling</label>
+        <div class="num-field">
+          <input id="ceiling" class="num-input" type="number" value="-1" step="0.5" />
+          <span class="num-steppers">
+            <button type="button" class="num-step" data-for="ceiling" data-dir="up" tabindex="-1" aria-label="Increase ceiling"></button>
+            <button type="button" class="num-step" data-for="ceiling" data-dir="down" tabindex="-1" aria-label="Decrease ceiling"></button>
+          </span>
+        </div>
+        <span class="unit-inline">dBTP</span>
       </div>
-      <span class="unit-inline">dBTP</span>
     </section>
 
     <section id="plots" class="plots">
       <div id="metersPanel" class="meters-panel">
         <div class="meter-heads">
-          <div class="meter-head live" id="tpCard" title="True peak: the inter-sample peak level right now, with the highest value since Start or the last Reset shown as max. A stereo pair gets one bar per channel; the numbers are the louder of the two. The marker on each bar holds the recent peak briefly, then falls back.">
+          <div class="meter-head" id="tpCard" title="True peak: the inter-sample peak level right now, with the highest value since Start or the last Reset shown as max. A stereo pair gets one bar per channel; the numbers are the louder of the two. The number and the marker on each bar hold the recent peak briefly, then fall back.">
             <div class="label"><span class="label-full">True Peak</span><span class="label-short">TP</span> <span class="clip-flag" id="clipFlag">CLIP</span></div>
             <div class="value" id="truePeak">—</div>
             <div class="unit">dBTP</div>
             <div class="subvalue">max <span id="truePeakMax">—</span></div>
           </div>
-          <div class="meter-head live" title="Momentary loudness: the most recent 400 ms. The number and the marker hold the recent peak briefly, then fall back to the bar.">
+          <div class="meter-head ms" title="Momentary loudness: the most recent 400 ms. The number and the marker hold the recent peak briefly, then fall back to the bar.">
             <div class="label"><span class="label-full">Momentary</span><span class="label-short">M</span></div>
             <div class="value" id="momentary">—</div>
             <div class="unit">LUFS</div>
           </div>
-          <div class="meter-head live" title="Short-term loudness: the most recent 3 seconds. The number and the marker follow the bar slowly so they stay readable.">
+          <div class="meter-head ms" title="Short-term loudness: the most recent 3 seconds. The number and the marker follow the bar slowly so they stay readable.">
             <div class="label"><span class="label-full">Short-term</span><span class="label-short">S</span></div>
             <div class="value" id="shortTerm">—</div>
             <div class="unit">LUFS</div>

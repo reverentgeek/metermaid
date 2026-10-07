@@ -77,14 +77,16 @@ const M_MARKER_FALL_LU_PER_SEC = 5;
 const TP_MARKER_FALL_DB_PER_SEC = 12;
 // Short-term marker: not a peak hold but a slow follower (one-pole smoothing).
 const S_MARKER_TAU_SEC = 1;
-// Loudness-bar scales. "full" shares the true-peak dB scale; the other two are
-// the EBU Tech 3341 ranges in LU around the Target. They are only *named* EBU
-// while the Target is the R 128 level, since EBU mode defines 0 LU = −23 LUFS.
-type MeterScale = "full" | "9" | "18";
-const LU_SCALES = {
-	"9": { top: 9, floor: -18, step: 3 },
-	"18": { top: 18, floor: -36, step: 6 },
-} as const;
+// Loudness-bar scales. "full" shares the true-peak dB scale; the others are
+// the EBU Tech 3341 ranges in LU around the Target. EBU mode defines 0 LU as
+// −23 LUFS, so the "ebu" scales pin the Target there (and lock its control);
+// the "lu" scales are the same ranges around the user's own Target.
+type MeterScale = "full" | "ebu9" | "ebu18" | "lu9" | "lu18";
+const LU_9 = { top: 9, floor: -18, step: 3 };
+const LU_18 = { top: 18, floor: -36, step: 6 };
+const LU_SCALES = { ebu9: LU_9, ebu18: LU_18, lu9: LU_9, lu18: LU_18 };
+const isMeterScale = (v: unknown): v is MeterScale =>
+	v === "full" || (typeof v === "string" && v in LU_SCALES);
 const EBU_TARGET_LUFS = -23;
 // On the LU scales, within ±1 LU of the Target is "on target" (yellow), below
 // is green, above is red — the EBU colour convention.
@@ -120,8 +122,8 @@ let guideRate = 0; // sample rate guideCurve was computed at
 const guideCache = new Map<string, NoiseReference>(); // "pink:48000" → curve
 let guideFetchSeq = 0; // discards stale async fetch results
 const DEFAULT_GUIDE_TARGET_LUFS = -23; // anchor when Target is empty/invalid
-let displayedPeak = PEAK_FLOOR; // live true-peak with release ballistics
-let displayedPeaks: number[] = []; // the same, per metered channel (the bars)
+// Live true peak with release ballistics, per metered channel (the bars).
+let displayedPeaks: number[] = [];
 // A peak-hold marker: its level, and how long it has been holding there.
 interface HoldMarker {
 	value: number;
@@ -143,7 +145,8 @@ let showMeters = true;
 let showSpectrum = false;
 // Numeric readouts for the live quantities (True Peak, Momentary, Short-term).
 // Off leaves only Integrated + LRA above the bars. Persisted.
-let showLiveReadouts = true;
+let showTpReadout = true;
+let showMsReadouts = true;
 let meterScale: MeterScale = "full"; // persisted
 // Compact view: only the transport, a slim readout row, and the plots — sized
 // for tiling several meter windows on one display. Persisted.
@@ -201,7 +204,9 @@ const elapsedEl = $<HTMLSpanElement>("elapsed");
 const elapsedTime = $<HTMLSpanElement>("elapsedTime");
 const showMetersInput = $<HTMLInputElement>("showMeters");
 const showSpectrumInput = $<HTMLInputElement>("showSpectrum");
-const showLiveReadoutsInput = $<HTMLInputElement>("showLiveReadouts");
+const showTpReadoutInput = $<HTMLInputElement>("showTpReadout");
+const showMsReadoutsInput = $<HTMLInputElement>("showMsReadouts");
+const ebuTag = $<HTMLSpanElement>("ebuTag");
 const meterScaleSelect = $<HTMLSelectElement>("meterScale");
 const plots = $<HTMLElement>("plots");
 const metersPanel = $<HTMLDivElement>("metersPanel");
@@ -265,7 +270,11 @@ async function persist() {
 			"sampleRate",
 			rateSelect.value ? Number(rateSelect.value) : null,
 		);
-		await store.set("target", numOrNull(targetInput.value));
+		// On an EBU scale the input shows the pinned −23; save the user's own.
+		await store.set(
+			"target",
+			numOrNull(isEbuScale() ? userTarget : targetInput.value),
+		);
 		await store.set("ceiling", numOrNull(ceilingInput.value));
 		await store.set("autoStart", autostartInput.checked);
 		// The max-hold toggle and guide selection persist; the held data and
@@ -274,7 +283,8 @@ async function persist() {
 		await store.set("guide", guideKind);
 		await store.set("showMeters", showMeters);
 		await store.set("showSpectrum", showSpectrum);
-		await store.set("showLiveReadouts", showLiveReadouts);
+		await store.set("showTpReadout", showTpReadout);
+		await store.set("showMsReadouts", showMsReadouts);
 		await store.set("meterScale", meterScale);
 		await store.set("compact", compact);
 		await store.save();
@@ -777,7 +787,6 @@ function updateElapsed(now: number) {
 // Drop the meter ballistics (true-peak release, loudness markers) so a new
 // measurement doesn't start under the previous one's decaying values.
 function resetBallistics() {
-	displayedPeak = PEAK_FLOOR;
 	displayedPeaks = [];
 	tpMarkers = [];
 	mMarker = { value: LOUDNESS_FLOOR, heldSec: 0 };
@@ -792,7 +801,6 @@ function updateReadouts(m: Metrics) {
 	lastPeakTs = now;
 	const release = (live: number, shown: number) =>
 		live > shown ? live : Math.max(live, shown - PEAK_RELEASE_DB_PER_SEC * dt);
-	displayedPeak = release(m.truePeakDb, displayedPeak);
 	displayedPeaks = m.truePeakChDb.map((live, c) =>
 		release(live, displayedPeaks[c] ?? PEAK_FLOOR),
 	);
@@ -831,7 +839,12 @@ function updateReadouts(m: Metrics) {
 	$("shortTerm").textContent = fmt(sMarker);
 	$("momentary").textContent = fmt(mMarker.value);
 	$("lra").textContent = m.lra > 0 ? m.lra.toFixed(1) : "0.0";
-	$("truePeak").textContent = fmt(displayedPeak, PEAK_FLOOR);
+	// Like the loudness numbers, the true-peak number shows the marker (the
+	// louder channel's), so it holds long enough to read.
+	$("truePeak").textContent = fmt(
+		Math.max(PEAK_FLOOR, ...tpMarkers.map((t) => t.value)),
+		PEAK_FLOOR,
+	);
 	$("truePeakMax").textContent = fmt(m.truePeakMaxDb, PEAK_FLOOR);
 
 	// Clip indicator latches once the held max crosses the ceiling — but only
@@ -921,13 +934,26 @@ function luScale() {
 		: null;
 }
 
-// Name the LU scales "EBU" only while the Target is the R 128 level.
-function syncScaleLabels() {
-	const ebu = parseFloat(targetInput.value) === EBU_TARGET_LUFS;
-	for (const opt of Array.from(meterScaleSelect.options)) {
-		if (opt.value === "full") continue;
-		opt.textContent = ebu ? `EBU +${opt.value}` : `+${opt.value} LU`;
-	}
+function isEbuScale(): boolean {
+	return meterScale === "ebu9" || meterScale === "ebu18";
+}
+
+// The Target as the user set it. On an EBU scale the input is pinned to −23
+// and locked; this is what comes back when they leave it (and what persists).
+let userTarget = targetInput.value;
+
+// Pin and lock the Target on an EBU scale; restore the user's own otherwise.
+function syncTargetLock() {
+	const ebu = isEbuScale();
+	if (ebu) targetInput.value = String(EBU_TARGET_LUFS);
+	else if (targetInput.disabled) targetInput.value = userTarget;
+	targetInput.disabled = ebu;
+	const field = targetInput.closest(".num-field");
+	field?.classList.toggle("locked", ebu);
+	for (const btn of field?.querySelectorAll<HTMLButtonElement>(".num-step") ??
+		[])
+		btn.disabled = ebu;
+	ebuTag.hidden = !ebu;
 }
 
 // Show/hide the two plots and apply compact view. The readouts stay put when
@@ -940,7 +966,8 @@ function applyView() {
 	// The max-hold shortcut is only worth advertising with the spectrum up.
 	maxHoldHint.hidden = !showSpectrum;
 	plots.classList.toggle("no-bars", !showMeters);
-	metersPanel.classList.toggle("no-live-readouts", !showLiveReadouts);
+	metersPanel.classList.toggle("no-tp-readout", !showTpReadout);
+	metersPanel.classList.toggle("no-ms-readouts", !showMsReadouts);
 	document.body.classList.toggle("compact", compact);
 	compactToggle.textContent = compact ? "Expand" : "Compact";
 	compactToggle.setAttribute("aria-pressed", String(compact));
@@ -1291,7 +1318,7 @@ function drawHover(
 // styles.css so the readouts line up with the bars.
 const METER_PAD_TOP = 6;
 const METER_PAD_BOTTOM = 6;
-const METER_PAD_BOTTOM_LABELS = 16; // room for the L / R labels under the bars
+const METER_PAD_BOTTOM_LABELS = 16; // room for the L / R and EBU labels under the bars
 const METER_PAD_RIGHT = 6;
 const METER_PAD_RIGHT_LU = 26; // room for the LU scale (.lu-axis in styles.css)
 const METER_MAX_BAR_W = 120;
@@ -1313,7 +1340,8 @@ function drawMeters() {
 	mctx.fillRect(0, 0, w, h);
 
 	const padR = lu ? METER_PAD_RIGHT_LU : METER_PAD_RIGHT;
-	const padB = nTp > 1 ? METER_PAD_BOTTOM_LABELS : METER_PAD_BOTTOM;
+	const ebu = lu !== null && isEbuScale();
+	const padB = nTp > 1 || ebu ? METER_PAD_BOTTOM_LABELS : METER_PAD_BOTTOM;
 	const pl = PLOT_PAD_LEFT;
 	const pt = METER_PAD_TOP;
 	const pw = Math.max(1, w - PLOT_PAD_LEFT - padR);
@@ -1502,6 +1530,18 @@ function drawMeters() {
 			mctx.fillStyle = "rgba(255,255,255,0.45)";
 			mctx.textAlign = "center";
 			mctx.fillText(label, x + barW / 2, pb + padB / 2 + 1);
+		}
+	}
+
+	// Name the mode under the loudness bars, so it shows in compact view too.
+	if (ebu && lu) {
+		const text = [`EBU R 128 · +${lu.top} scale`, `EBU +${lu.top}`].find(
+			(t) => mctx.measureText(t).width <= loudW - 8,
+		);
+		if (text) {
+			mctx.fillStyle = "rgba(110, 168, 254, 0.9)";
+			mctx.textAlign = "center";
+			mctx.fillText(text, loudX + loudW / 2, pb + padB / 2 + 1);
 		}
 	}
 
@@ -1710,12 +1750,16 @@ window.addEventListener("DOMContentLoaded", async () => {
 		const sm = await store.get<boolean>("showMeters");
 		const ss = await store.get<boolean>("showSpectrum");
 		const cp = await store.get<boolean>("compact");
+		const tr = await store.get<boolean>("showTpReadout");
+		const mr = await store.get<boolean>("showMsReadouts");
+		// Beta 2 had one combined toggle and target-dependent "9" / "18" scales.
 		const lr = await store.get<boolean>("showLiveReadouts");
 		const ms = await store.get<string>("meterScale");
 		if (dev) pendingDevice = dev;
 		if (typeof ch === "string") pendingChannels = ch;
 		if (typeof sr === "number") pendingRate = sr;
 		if (typeof tgt === "number") targetInput.value = String(tgt);
+		userTarget = targetInput.value;
 		if (typeof ceil === "number") ceilingInput.value = String(ceil);
 		autostartInput.checked = auto === true;
 		resetHintSeen = hintSeen === true;
@@ -1730,15 +1774,19 @@ window.addEventListener("DOMContentLoaded", async () => {
 		compact = cp === true;
 		showMetersInput.checked = showMeters;
 		showSpectrumInput.checked = showSpectrum;
-		showLiveReadouts = lr !== false;
-		showLiveReadoutsInput.checked = showLiveReadouts;
-		if (ms === "9" || ms === "18") meterScale = ms;
+		showTpReadout = (tr ?? lr) !== false;
+		showMsReadouts = (mr ?? lr) !== false;
+		showTpReadoutInput.checked = showTpReadout;
+		showMsReadoutsInput.checked = showMsReadouts;
+		if (isMeterScale(ms)) meterScale = ms;
+		else if (ms === "9" || ms === "18")
+			meterScale = `${tgt === EBU_TARGET_LUFS ? "ebu" : "lu"}${ms}`;
 		meterScaleSelect.value = meterScale;
 	} catch {
 		// No store yet (first launch) or a read error — fall back to UI defaults.
 	}
 
-	syncScaleLabels();
+	syncTargetLock();
 	applyView();
 
 	await loadDevices();
@@ -1900,19 +1948,26 @@ window.addEventListener("DOMContentLoaded", async () => {
 		applyView();
 		void persist();
 	});
-	showLiveReadoutsInput.addEventListener("change", () => {
-		showLiveReadouts = showLiveReadoutsInput.checked;
+	showTpReadoutInput.addEventListener("change", () => {
+		showTpReadout = showTpReadoutInput.checked;
+		applyView();
+		void persist();
+	});
+	showMsReadoutsInput.addEventListener("change", () => {
+		showMsReadouts = showMsReadoutsInput.checked;
 		applyView();
 		void persist();
 	});
 	meterScaleSelect.addEventListener("change", () => {
 		const v = meterScaleSelect.value;
-		meterScale = v === "9" || v === "18" ? v : "full";
+		meterScale = isMeterScale(v) ? v : "full";
+		syncTargetLock();
+		if (latest) updateReadouts(latest); // suggested gain follows the Target
 		applyView();
 		void persist();
 	});
 	targetInput.addEventListener("input", () => {
-		syncScaleLabels();
+		userTarget = targetInput.value;
 		if (latest) updateReadouts(latest);
 		requestFrame(); // the target-anchored guide curve moves, even idle
 	});
