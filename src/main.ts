@@ -43,6 +43,8 @@ interface Metrics {
 	lra: number;
 	truePeakDb: number;
 	truePeakMaxDb: number;
+	truePeakChDb: number[]; // per metered channel (L, R for a stereo pair)
+	truePeakChMaxDb: number[];
 	spectrum: number[];
 	sampleRate: number;
 	channels: number;
@@ -68,6 +70,25 @@ const TARGET_TOLERANCE_LU = 1;
 // Ballistics expressed as dB/second so they fall at the same real-world rate
 // regardless of display refresh rate or the engine's emit cadence.
 const PEAK_RELEASE_DB_PER_SEC = 60; // live true-peak meter fall
+// Peak-hold markers (Momentary and per-channel true peak): hold the recent
+// peak, then fall back toward the bar.
+const MARKER_HOLD_SEC = 1.5;
+const M_MARKER_FALL_LU_PER_SEC = 5;
+const TP_MARKER_FALL_DB_PER_SEC = 12;
+// Short-term marker: not a peak hold but a slow follower (one-pole smoothing).
+const S_MARKER_TAU_SEC = 1;
+// Loudness-bar scales. "full" shares the true-peak dB scale; the other two are
+// the EBU Tech 3341 ranges in LU around the Target. They are only *named* EBU
+// while the Target is the R 128 level, since EBU mode defines 0 LU = −23 LUFS.
+type MeterScale = "full" | "9" | "18";
+const LU_SCALES = {
+	"9": { top: 9, floor: -18, step: 3 },
+	"18": { top: 18, floor: -36, step: 6 },
+} as const;
+const EBU_TARGET_LUFS = -23;
+// On the LU scales, within ±1 LU of the Target is "on target" (yellow), below
+// is green, above is red — the EBU colour convention.
+const LU_ON_TARGET = 1;
 const SPECTRUM_PEAK_DECAY_DB_PER_SEC = 36; // spectrum peak-hold fall
 // Clamp the per-tick delta so a backgrounded tab (large gap between ticks)
 // doesn't make the meters jump on the first frame back.
@@ -98,8 +119,17 @@ let guideLoudness = 0; // integrated LUFS of the generated signal
 let guideRate = 0; // sample rate guideCurve was computed at
 const guideCache = new Map<string, NoiseReference>(); // "pink:48000" → curve
 let guideFetchSeq = 0; // discards stale async fetch results
-const DEFAULT_GUIDE_TARGET_LUFS = -20; // anchor when Target is empty/invalid
+const DEFAULT_GUIDE_TARGET_LUFS = -23; // anchor when Target is empty/invalid
 let displayedPeak = PEAK_FLOOR; // live true-peak with release ballistics
+let displayedPeaks: number[] = []; // the same, per metered channel (the bars)
+// A peak-hold marker: its level, and how long it has been holding there.
+interface HoldMarker {
+	value: number;
+	heldSec: number;
+}
+let tpMarkers: HoldMarker[] = []; // true-peak markers, per metered channel
+let mMarker: HoldMarker = { value: LOUDNESS_FLOOR, heldSec: 0 }; // Momentary
+let sMarker = LOUDNESS_FLOOR; // Short-term marker level (slow follower)
 let lastPeakTs = 0; // timestamp of the last true-peak ballistics update (ms)
 let lastFrameTs = 0; // timestamp of the last spectrum frame (ms)
 let clipLatched = false;
@@ -111,6 +141,10 @@ let shownElapsedSec = -1;
 // the default view; the spectrum is opt-in.
 let showMeters = true;
 let showSpectrum = false;
+// Numeric readouts for the live quantities (True Peak, Momentary, Short-term).
+// Off leaves only Integrated + LRA above the bars. Persisted.
+let showLiveReadouts = true;
+let meterScale: MeterScale = "full"; // persisted
 // Compact view: only the transport, a slim readout row, and the plots — sized
 // for tiling several meter windows on one display. Persisted.
 let compact = false;
@@ -167,6 +201,8 @@ const elapsedEl = $<HTMLSpanElement>("elapsed");
 const elapsedTime = $<HTMLSpanElement>("elapsedTime");
 const showMetersInput = $<HTMLInputElement>("showMeters");
 const showSpectrumInput = $<HTMLInputElement>("showSpectrum");
+const showLiveReadoutsInput = $<HTMLInputElement>("showLiveReadouts");
+const meterScaleSelect = $<HTMLSelectElement>("meterScale");
 const plots = $<HTMLElement>("plots");
 const metersPanel = $<HTMLDivElement>("metersPanel");
 const metersWrap = $<HTMLDivElement>("metersWrap");
@@ -238,6 +274,8 @@ async function persist() {
 		await store.set("guide", guideKind);
 		await store.set("showMeters", showMeters);
 		await store.set("showSpectrum", showSpectrum);
+		await store.set("showLiveReadouts", showLiveReadouts);
+		await store.set("meterScale", meterScale);
 		await store.set("compact", compact);
 		await store.save();
 	} catch {
@@ -619,8 +657,7 @@ async function start() {
 		running = true;
 		clipLatched = false;
 		latchHoldGeneration = lastGeneration;
-		displayedPeak = PEAK_FLOOR;
-		lastPeakTs = 0;
+		resetBallistics();
 		restartElapsed();
 		// Drop the previous session's spectrum peak-hold so the new capture
 		// starts clean rather than under a stale, decaying peak line. The
@@ -737,21 +774,63 @@ function updateElapsed(now: number) {
 	elapsedTime.textContent = h > 0 ? `${h}:${ms}` : ms;
 }
 
-function updateReadouts(m: Metrics) {
-	$("integrated").textContent = fmt(m.integrated);
-	$("shortTerm").textContent = fmt(m.shortTerm);
-	$("momentary").textContent = fmt(m.momentary);
-	$("lra").textContent = m.lra > 0 ? m.lra.toFixed(1) : "0.0";
+// Drop the meter ballistics (true-peak release, loudness markers) so a new
+// measurement doesn't start under the previous one's decaying values.
+function resetBallistics() {
+	displayedPeak = PEAK_FLOOR;
+	displayedPeaks = [];
+	tpMarkers = [];
+	mMarker = { value: LOUDNESS_FLOOR, heldSec: 0 };
+	sMarker = LOUDNESS_FLOOR;
+	lastPeakTs = 0;
+}
 
+function updateReadouts(m: Metrics) {
 	// Live true peak with release ballistics; held max from the engine.
 	const now = performance.now();
 	const dt = lastPeakTs ? Math.min((now - lastPeakTs) / 1000, MAX_TICK_SEC) : 0;
 	lastPeakTs = now;
-	const live = m.truePeakDb;
-	displayedPeak =
-		live > displayedPeak
-			? live
-			: Math.max(live, displayedPeak - PEAK_RELEASE_DB_PER_SEC * dt);
+	const release = (live: number, shown: number) =>
+		live > shown ? live : Math.max(live, shown - PEAK_RELEASE_DB_PER_SEC * dt);
+	displayedPeak = release(m.truePeakDb, displayedPeak);
+	displayedPeaks = m.truePeakChDb.map((live, c) =>
+		release(live, displayedPeaks[c] ?? PEAK_FLOOR),
+	);
+
+	// Peak-hold markers: jump up with the level, hold, then fall back to it.
+	const holdFall = (
+		live: number,
+		mark: HoldMarker | undefined,
+		fallPerSec: number,
+	): HoldMarker => {
+		if (!mark || live >= mark.value) return { value: live, heldSec: 0 };
+		const heldSec = mark.heldSec + dt;
+		return {
+			value:
+				heldSec > MARKER_HOLD_SEC
+					? Math.max(live, mark.value - fallPerSec * dt)
+					: mark.value,
+			heldSec,
+		};
+	};
+	tpMarkers = m.truePeakChDb.map((live, c) =>
+		holdFall(live, tpMarkers[c], TP_MARKER_FALL_DB_PER_SEC),
+	);
+	mMarker = holdFall(m.momentary, mMarker, M_MARKER_FALL_LU_PER_SEC);
+	// Short-term marker: ease toward the bar; snap when there is nothing to
+	// ease from (first frame, or silence on either side).
+	sMarker =
+		dt === 0 || sMarker <= LOUDNESS_FLOOR || m.shortTerm <= LOUDNESS_FLOOR
+			? m.shortTerm
+			: sMarker +
+				(m.shortTerm - sMarker) * (1 - Math.exp(-dt / S_MARKER_TAU_SEC));
+
+	// The Momentary and Short-term numbers show their marker, not the raw
+	// value, so they change slowly enough to read.
+	$("integrated").textContent = fmt(m.integrated);
+	$("shortTerm").textContent = fmt(sMarker);
+	$("momentary").textContent = fmt(mMarker.value);
+	$("lra").textContent = m.lra > 0 ? m.lra.toFixed(1) : "0.0";
 	$("truePeak").textContent = fmt(displayedPeak, PEAK_FLOOR);
 	$("truePeakMax").textContent = fmt(m.truePeakMaxDb, PEAK_FLOOR);
 
@@ -804,11 +883,51 @@ function resizeCanvas() {
 }
 
 // Size the readouts above the bars to their column: large when there is room,
-// abbreviated (I / S / M / TP) once the full names no longer fit.
+// abbreviated (TP / M / S / I) once the full names no longer fit.
+// The grid also mirrors the canvas: one column per bar (the True Peak head
+// spans its per-channel bars) and the same right gutter as the LU axis.
 function syncMeterHeads() {
-	const col = metersPanel.clientWidth / 4;
-	metersPanel.classList.toggle("wide", col >= 150);
-	metersPanel.classList.toggle("tight", col < 84);
+	headTpBars = tpBarCount();
+	headLuAxis = luScale() !== null;
+	metersPanel.style.setProperty("--meter-cols", String(headTpBars + 3));
+	metersPanel.style.setProperty("--tp-span", String(headTpBars));
+	metersPanel.classList.toggle("lu-axis", headLuAxis);
+	// Measure a real column (the grid's gutters vary with the scale), not the
+	// panel: the full names need ~90px before they run into their neighbours.
+	const col = tpCard.getBoundingClientRect().width / headTpBars;
+	metersPanel.classList.toggle("wide", col >= 142);
+	metersPanel.classList.toggle("tight", col < 90);
+}
+
+// What the readout grid was last laid out for; drawMeters re-syncs on a change.
+let headTpBars = 1;
+let headLuAxis = false;
+
+// One true-peak bar per metered channel: from the live metrics while
+// capturing, otherwise from the channel picker so the idle layout matches.
+function tpBarCount(): number {
+	const n =
+		latest?.truePeakChDb?.length ||
+		(channelSelect.value ? channelSelect.value.split(",").length : 1);
+	return Math.max(1, n);
+}
+
+// The LU scale in effect, or null on the full-range scale. An LU scale needs
+// a Target to hang 0 LU on, so it falls back to full range without one.
+function luScale() {
+	if (meterScale === "full") return null;
+	return Number.isFinite(parseFloat(targetInput.value))
+		? LU_SCALES[meterScale]
+		: null;
+}
+
+// Name the LU scales "EBU" only while the Target is the R 128 level.
+function syncScaleLabels() {
+	const ebu = parseFloat(targetInput.value) === EBU_TARGET_LUFS;
+	for (const opt of Array.from(meterScaleSelect.options)) {
+		if (opt.value === "full") continue;
+		opt.textContent = ebu ? `EBU +${opt.value}` : `+${opt.value} LU`;
+	}
 }
 
 // Show/hide the two plots and apply compact view. The readouts stay put when
@@ -821,6 +940,7 @@ function applyView() {
 	// The max-hold shortcut is only worth advertising with the spectrum up.
 	maxHoldHint.hidden = !showSpectrum;
 	plots.classList.toggle("no-bars", !showMeters);
+	metersPanel.classList.toggle("no-live-readouts", !showLiveReadouts);
 	document.body.classList.toggle("compact", compact);
 	compactToggle.textContent = compact ? "Expand" : "Compact";
 	compactToggle.setAttribute("aria-pressed", String(compact));
@@ -1171,13 +1291,20 @@ function drawHover(
 // styles.css so the readouts line up with the bars.
 const METER_PAD_TOP = 6;
 const METER_PAD_BOTTOM = 6;
+const METER_PAD_BOTTOM_LABELS = 16; // room for the L / R labels under the bars
 const METER_PAD_RIGHT = 6;
+const METER_PAD_RIGHT_LU = 26; // room for the LU scale (.lu-axis in styles.css)
 const METER_MAX_BAR_W = 120;
 const METER_GREEN = "#54e08a";
 const METER_AMBER = "#f2c14e";
 const METER_RED = "#ff5d5d";
 
 function drawMeters() {
+	const nTp = tpBarCount();
+	const target = parseFloat(targetInput.value);
+	const lu = luScale();
+	if (nTp !== headTpBars || (lu !== null) !== headLuAxis) syncMeterHeads();
+
 	const w = metersCanvas.clientWidth;
 	const h = metersCanvas.clientHeight;
 	mctx.clearRect(0, 0, w, h);
@@ -1185,37 +1312,77 @@ function drawMeters() {
 	mctx.fillStyle = "#0c0e13";
 	mctx.fillRect(0, 0, w, h);
 
+	const padR = lu ? METER_PAD_RIGHT_LU : METER_PAD_RIGHT;
+	const padB = nTp > 1 ? METER_PAD_BOTTOM_LABELS : METER_PAD_BOTTOM;
 	const pl = PLOT_PAD_LEFT;
 	const pt = METER_PAD_TOP;
-	const pw = Math.max(1, w - PLOT_PAD_LEFT - METER_PAD_RIGHT);
-	const ph = Math.max(1, h - METER_PAD_TOP - METER_PAD_BOTTOM);
+	const pw = Math.max(1, w - PLOT_PAD_LEFT - padR);
+	const ph = Math.max(1, h - METER_PAD_TOP - padB);
 	const pb = pt + ph;
-	const toY = (db: number) =>
+
+	// Two axes share the plot height: dB on the left (always the true-peak
+	// bars; the loudness bars too on the full-range scale) and, on an LU
+	// scale, LU around the Target on the right for the loudness bars.
+	type Axis = { top: number; floor: number };
+	const dbAxis: Axis = { top: METER_TOP, floor: METER_FLOOR };
+	const loudAxis: Axis = lu
+		? { top: target + lu.top, floor: target + lu.floor }
+		: dbAxis;
+	const toY = (axis: Axis, v: number) =>
 		pt +
-		((METER_TOP - Math.max(METER_FLOOR, Math.min(METER_TOP, db))) /
-			(METER_TOP - METER_FLOOR)) *
+		((axis.top - Math.max(axis.floor, Math.min(axis.top, v))) /
+			(axis.top - axis.floor)) *
 			ph;
+
+	const slot = pw / (nTp + 3);
+	const barW = Math.max(2, Math.min(slot * 0.62, METER_MAX_BAR_W));
+	const tpW = slot * nTp; // true-peak bars come first; loudness bars follow
+	const loudX = pl + tpW;
+	const loudW = slot * 3;
 
 	mctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
 	mctx.lineWidth = 1;
-
-	// dB grid lines + labels in the left gutter
-	mctx.strokeStyle = "rgba(255,255,255,0.05)";
 	mctx.textBaseline = "middle";
-	mctx.textAlign = "right";
-	for (let db = 0; db >= METER_FLOOR; db -= 10) {
-		const y = toY(db);
+	const MIN_LABEL_GAP = 13; // px between scale labels before thinning them
+	const gridLine = (x0: number, x1: number, y: number) => {
+		mctx.strokeStyle = "rgba(255,255,255,0.05)";
 		mctx.beginPath();
-		mctx.moveTo(pl, y + 0.5);
-		mctx.lineTo(pl + pw, y + 0.5);
+		mctx.moveTo(x0, y + 0.5);
+		mctx.lineTo(x1, y + 0.5);
 		mctx.stroke();
-		mctx.fillStyle = "rgba(255,255,255,0.32)";
+	};
+
+	// dB grid lines + labels in the left gutter: every 5 dB when there is room.
+	const dbStep = (ph * 5) / (METER_TOP - METER_FLOOR) >= MIN_LABEL_GAP ? 5 : 10;
+	const dbGridRight = lu ? loudX : pl + pw;
+	mctx.textAlign = "right";
+	mctx.fillStyle = "rgba(255,255,255,0.32)";
+	for (let db = 0; db >= METER_FLOOR; db -= dbStep) {
+		const y = toY(dbAxis, db);
+		gridLine(pl, dbGridRight, y);
 		mctx.fillText(`${db}`, pl - 4, y);
 	}
+	// The top of the scale, when its label clears the 0 beneath it.
+	if (toY(dbAxis, 0) - pt >= MIN_LABEL_GAP - 2)
+		mctx.fillText(`+${METER_TOP}`, pl - 4, pt);
 
-	const target = parseFloat(targetInput.value);
-	const hasTarget =
-		Number.isFinite(target) && target < METER_TOP && target > METER_FLOOR;
+	// LU grid lines + labels in the right gutter, on multiples of the step so
+	// 0 LU (the Target) is always one of them.
+	if (lu) {
+		let step: number = lu.step;
+		while ((ph * step) / (lu.top - lu.floor) < MIN_LABEL_GAP) step *= 2;
+		mctx.textAlign = "left";
+		for (let v = Math.ceil(lu.floor / step) * step; v <= lu.top; v += step) {
+			const y = toY(loudAxis, target + v);
+			gridLine(loudX, pl + pw, y);
+			mctx.fillStyle = `rgba(255,255,255,${v === 0 ? 0.6 : 0.32})`;
+			mctx.fillText(v > 0 ? `+${v}` : `${v}`, pl + pw + 4, y);
+		}
+	}
+
+	const hasTarget = lu
+		? true
+		: Number.isFinite(target) && target < METER_TOP && target > METER_FLOOR;
 	const ceil = parseFloat(ceilingInput.value);
 	const hasCeil =
 		Number.isFinite(ceil) && ceil <= METER_TOP && ceil >= METER_FLOOR;
@@ -1226,91 +1393,146 @@ function drawMeters() {
 	green.addColorStop(0, "#2a9d8f");
 	green.addColorStop(1, METER_GREEN);
 
-	type Zone = [number, string | CanvasGradient];
-	const loudZones: Zone[] = hasTarget
+	// A bar is filled zone by zone, bottom up; `mark` is the flat colour a
+	// marker takes while it sits in that zone.
+	type Zone = { upTo: number; fill: string | CanvasGradient; mark: string };
+	const greenTo = (upTo: number): Zone => ({
+		upTo,
+		fill: green,
+		mark: METER_GREEN,
+	});
+	const loudZones: Zone[] = lu
 		? [
-				[target, green],
-				[Infinity, METER_AMBER],
+				greenTo(target - LU_ON_TARGET),
+				{ upTo: target + LU_ON_TARGET, fill: METER_AMBER, mark: METER_AMBER },
+				{ upTo: Infinity, fill: METER_RED, mark: METER_RED },
 			]
-		: [[Infinity, green]];
+		: hasTarget
+			? [
+					greenTo(target),
+					{ upTo: Infinity, fill: METER_AMBER, mark: METER_AMBER },
+				]
+			: [greenTo(Infinity)];
 	const peakZones: Zone[] = [
-		[hasCeil ? ceil : 0, green],
-		[Infinity, METER_RED],
-	];
-	// Same order as the readouts above: Integrated, Short-term, Momentary, TP.
-	const bars: { value: number | undefined; zones: Zone[] }[] = [
-		{ value: latest?.integrated, zones: loudZones },
-		{ value: latest?.shortTerm, zones: loudZones },
-		{ value: latest?.momentary, zones: loudZones },
-		{ value: latest ? displayedPeak : undefined, zones: peakZones },
+		greenTo(hasCeil ? ceil : 0),
+		{ upTo: Infinity, fill: METER_RED, mark: METER_RED },
 	];
 
-	const slot = pw / bars.length;
-	const barW = Math.max(2, Math.min(slot * 0.62, METER_MAX_BAR_W));
-	const loudW = slot * 3; // the three loudness bars; true peak is the last slot
+	// Same order as the readouts above, fastest to slowest: True Peak (one bar
+	// per channel), Momentary, Short-term, Integrated.
+	interface Bar {
+		value: number | undefined;
+		axis: Axis;
+		zones: Zone[];
+		marker?: { value: number; onBar: boolean };
+		label?: string; // under the bar
+	}
+	const bars: Bar[] = [];
+	for (let c = 0; c < nTp; c++) {
+		bars.push({
+			value: latest ? displayedPeaks[c] : undefined,
+			axis: dbAxis,
+			zones: peakZones,
+			marker:
+				latest && tpMarkers[c]
+					? { value: tpMarkers[c].value, onBar: false }
+					: undefined,
+			label: nTp === 2 ? "LR"[c] : nTp > 2 ? `${c + 1}` : undefined,
+		});
+	}
+	bars.push(
+		{
+			value: latest?.momentary,
+			axis: loudAxis,
+			zones: loudZones,
+			marker: latest ? { value: mMarker.value, onBar: false } : undefined,
+		},
+		{
+			value: latest?.shortTerm,
+			axis: loudAxis,
+			zones: loudZones,
+			marker: latest ? { value: sMarker, onBar: true } : undefined,
+		},
+		{ value: latest?.integrated, axis: loudAxis, zones: loudZones },
+	);
 
-	// Faint divider: the true-peak bar is a different quantity (dBTP, not LUFS).
+	// Faint divider: the true-peak bars are a different quantity (dBTP, not LUFS).
 	mctx.strokeStyle = "rgba(255,255,255,0.10)";
 	mctx.beginPath();
-	mctx.moveTo(Math.round(pl + loudW) + 0.5, pt);
-	mctx.lineTo(Math.round(pl + loudW) + 0.5, pb);
+	mctx.moveTo(Math.round(loudX) + 0.5, pt);
+	mctx.lineTo(Math.round(loudX) + 0.5, pb);
 	mctx.stroke();
 
 	for (let i = 0; i < bars.length; i++) {
-		const { value, zones } = bars[i];
+		const { value, axis, zones, marker, label } = bars[i];
 		const x = pl + (i + 0.5) * slot - barW / 2;
 
 		mctx.fillStyle = "rgba(255,255,255,0.04)";
 		mctx.fillRect(x, pt, barW, ph);
 
-		if (value !== undefined && Number.isFinite(value) && value > METER_FLOOR) {
-			const top = Math.min(value, METER_TOP);
-			let lo = METER_FLOOR;
-			for (const [upTo, color] of zones) {
-				const hi = Math.min(upTo, top);
+		if (value !== undefined && Number.isFinite(value) && value > axis.floor) {
+			const top = Math.min(value, axis.top);
+			let lo = axis.floor;
+			for (const zone of zones) {
+				const hi = Math.min(zone.upTo, top);
 				if (hi > lo) {
-					mctx.fillStyle = color;
-					mctx.fillRect(x, toY(hi), barW, toY(lo) - toY(hi));
+					mctx.fillStyle = zone.fill;
+					mctx.fillRect(x, toY(axis, hi), barW, toY(axis, lo) - toY(axis, hi));
 					lo = hi;
 				}
 				if (lo >= top) break;
 			}
 		}
 
-		// Held true-peak maximum, as a tick across the bar.
-		if (zones === peakZones && latest && latest.truePeakMaxDb > METER_FLOOR) {
-			mctx.fillStyle = "rgba(255,255,255,0.75)";
-			mctx.fillRect(x, toY(latest.truePeakMaxDb) - 1, barW, 2);
+		// Markers: a solid pill in its zone's colour. The true-peak and
+		// Momentary peak holds never sit below their bar top; the slow Short-term follower
+		// can, so it gets a dark edge to stay legible against the bar.
+		if (marker && marker.value > axis.floor) {
+			const y = Math.round(toY(axis, marker.value));
+			if (marker.onBar) {
+				mctx.fillStyle = "rgba(12, 14, 19, 0.9)";
+				mctx.fillRect(x, y - 2.5, barW, 5);
+			}
+			const zone = zones.find((z) => marker.value <= z.upTo);
+			mctx.fillStyle = zone ? zone.mark : METER_GREEN;
+			mctx.fillRect(x, y - 1.5, barW, 3);
+		}
+
+		if (label) {
+			mctx.fillStyle = "rgba(255,255,255,0.45)";
+			mctx.textAlign = "center";
+			mctx.fillText(label, x + barW / 2, pb + padB / 2 + 1);
 		}
 	}
 
 	// Target line across the loudness bars, ceiling line across the true peak.
-	// Each label sits in a gap beside a bar — between Integrated and Short-term
-	// for the target, left of the true-peak bar for the ceiling — never on a
-	// bar, where it would hide the bar's top edge right at the limit.
+	// Each label sits in a gap beside a bar — between Short-term and Integrated
+	// for the target; for the ceiling, between the two true-peak bars, or right
+	// of a lone one — never on a bar, where it would hide the bar's top edge
+	// right at the limit.
 	const gutter = (slot - barW) / 2;
 	if (hasTarget) {
 		meterLimitLine(
-			pl,
+			loudX,
 			loudW,
-			toY(target),
+			toY(loudAxis, target),
 			pt,
 			"rgba(110, 168, 254, 0.95)",
 			[`target ${target} LUFS`, `target ${target}`, `${target}`],
-			pl + slot - gutter,
+			loudX + slot * 2 - gutter,
 			gutter * 2,
 		);
 	}
 	if (hasCeil) {
 		meterLimitLine(
-			pl + loudW,
-			pw - loudW,
-			toY(ceil),
+			pl,
+			tpW,
+			toY(dbAxis, ceil),
 			pt,
 			"rgba(255, 93, 93, 0.95)",
 			[`ceiling ${ceil} dBTP`, `ceiling ${ceil}`, `${ceil}`],
-			pl + loudW,
-			gutter,
+			nTp > 1 ? pl + slot - gutter : loudX - gutter,
+			nTp > 1 ? gutter * 2 : gutter,
 		);
 	}
 }
@@ -1390,8 +1612,7 @@ function resetMeasurement() {
 	// Reset clears the measurement + decaying peak-hold only; the persistent
 	// max-hold and frozen reference have their own Clear controls.
 	peaks = [];
-	displayedPeak = PEAK_FLOOR;
-	lastPeakTs = 0;
+	resetBallistics();
 	clipLatched = false;
 	if (running) restartElapsed();
 	// Suppress clip latching for frames from before this reset; the engine
@@ -1489,6 +1710,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 		const sm = await store.get<boolean>("showMeters");
 		const ss = await store.get<boolean>("showSpectrum");
 		const cp = await store.get<boolean>("compact");
+		const lr = await store.get<boolean>("showLiveReadouts");
+		const ms = await store.get<string>("meterScale");
 		if (dev) pendingDevice = dev;
 		if (typeof ch === "string") pendingChannels = ch;
 		if (typeof sr === "number") pendingRate = sr;
@@ -1507,10 +1730,15 @@ window.addEventListener("DOMContentLoaded", async () => {
 		compact = cp === true;
 		showMetersInput.checked = showMeters;
 		showSpectrumInput.checked = showSpectrum;
+		showLiveReadouts = lr !== false;
+		showLiveReadoutsInput.checked = showLiveReadouts;
+		if (ms === "9" || ms === "18") meterScale = ms;
+		meterScaleSelect.value = meterScale;
 	} catch {
 		// No store yet (first launch) or a read error — fall back to UI defaults.
 	}
 
+	syncScaleLabels();
 	applyView();
 
 	await loadDevices();
@@ -1648,7 +1876,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 		});
 	}
 
-	channelSelect.addEventListener("change", () => void persist());
+	channelSelect.addEventListener("change", () => {
+		requestFrame(); // mono ↔ stereo changes the number of true-peak bars
+		void persist();
+	});
 	settingsToggle.addEventListener("click", () =>
 		setSettingsOpen(settingsPanel.hasAttribute("hidden")),
 	);
@@ -1669,7 +1900,19 @@ window.addEventListener("DOMContentLoaded", async () => {
 		applyView();
 		void persist();
 	});
+	showLiveReadoutsInput.addEventListener("change", () => {
+		showLiveReadouts = showLiveReadoutsInput.checked;
+		applyView();
+		void persist();
+	});
+	meterScaleSelect.addEventListener("change", () => {
+		const v = meterScaleSelect.value;
+		meterScale = v === "9" || v === "18" ? v : "full";
+		applyView();
+		void persist();
+	});
 	targetInput.addEventListener("input", () => {
+		syncScaleLabels();
 		if (latest) updateReadouts(latest);
 		requestFrame(); // the target-anchored guide curve moves, even idle
 	});

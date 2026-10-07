@@ -387,11 +387,22 @@ body {
 /* The numeric readouts, one per bar and in the same order, sitting directly
    above the bar they belong to. The side padding matches the meter canvas's
    scale gutter (PLOT_PAD_LEFT / METER_PAD_RIGHT in main.ts) so each head is
-   centered over its bar. main.ts sets .wide / .tight from the column width. */
+   centered over its bar. main.ts sets .wide / .tight from the column width,
+   the column count (one per bar; the True Peak head spans its per-channel
+   bars), and .lu-axis when the canvas reserves a right gutter for the LU
+   scale (METER_PAD_RIGHT_LU). */
 .meter-heads {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--meter-cols, 4), minmax(0, 1fr));
   padding: 0 6px 6px 28px;
+}
+
+.meters-panel.lu-axis .meter-heads {
+  padding-right: 26px;
+}
+
+#tpCard {
+  grid-column: span var(--tp-span, 1);
 }
 
 .plots.no-bars .meter-heads {
@@ -461,6 +472,15 @@ body {
   font-size: 9px;
 }
 
+/* Live readouts off (Settings): the True Peak, Momentary, and Short-term heads
+   keep their label (and the CLIP flag) so the bars stay identified, but drop
+   their numbers, leaving Integrated + LRA as the only figures. */
+.meters-panel.no-live-readouts .meter-head.live .value,
+.meters-panel.no-live-readouts .meter-head.live .unit,
+.meters-panel.no-live-readouts .meter-head.live .subvalue {
+  display: none;
+}
+
 /* True Peak clip indicator */
 .clip-flag {
   display: none;
@@ -475,6 +495,16 @@ body {
 
 .clip-flag.on {
   display: inline-block;
+}
+
+/* The CLIP flag shares the label's line. Outside the wide layout there is no
+   room for it beside the full name, so the name abbreviates while it shows. */
+.meters-panel:not(.wide) #tpCard.clipping .label-full {
+  display: none;
+}
+
+.meters-panel:not(.wide) #tpCard.clipping .label-short {
+  display: inline;
 }
 
 #tpCard.clipping {
