@@ -100,6 +100,11 @@ pub struct Metrics {
     pub true_peak_db: f64,
     /// Maximum true peak held since the last reset (peak-hold), dBTP.
     pub true_peak_max_db: f64,
+    /// Per-channel live true peak, dBTP, in metered-channel order (one entry
+    /// for mono, L then R for a stereo pair). `true_peak_db` is their maximum.
+    pub true_peak_ch_db: Vec<f64>,
+    /// Per-channel held true-peak maximum, dBTP, in the same order.
+    pub true_peak_ch_max_db: Vec<f64>,
     /// Log-spaced spectrum magnitudes, dB.
     pub spectrum: Vec<f32>,
     pub sample_rate: u32,
@@ -139,8 +144,9 @@ struct Analyzer {
     sample_rate: u32,
     /// Number of channels fed to the analyzer (selection length).
     channels: u16,
-    /// Max true peak (linear) seen since the last emit; reset each emit.
-    live_peak: f64,
+    /// Per-channel max true peak (linear) seen since the last emit; reset
+    /// each emit. One entry per analyzer channel.
+    live_peaks: Vec<f64>,
     /// Measurement generation (see [`Metrics::generation`]).
     generation: u64,
     fft: Arc<dyn Fft<f32>>,
@@ -166,7 +172,7 @@ impl Analyzer {
             device_channels: 0,
             sample_rate: 0,
             channels: 0,
-            live_peak: 0.0,
+            live_peaks: Vec::new(),
             generation: 0,
             fft,
             window,
@@ -191,7 +197,8 @@ impl Analyzer {
         self.sel = sel;
         self.device_channels = device_channels;
         self.mono_ring.clear();
-        self.live_peak = 0.0;
+        self.live_peaks.clear();
+        self.live_peaks.resize(ch as usize, 0.0);
         self.generation += 1;
         Ok(())
     }
@@ -200,7 +207,7 @@ impl Analyzer {
     fn shutdown(&mut self) {
         self.ebu = None;
         self.mono_ring.clear();
-        self.live_peak = 0.0;
+        self.live_peaks.fill(0.0);
     }
 
     /// Process a chunk of interleaved frames: de-interleave the selected
@@ -232,14 +239,12 @@ impl Analyzer {
 
         if let Some(ebu) = self.ebu.as_mut() {
             if ebu.add_frames_f32(&self.inter).is_ok() {
-                let mut p = 0.0f64;
-                for c in 0..n as u32 {
-                    if let Ok(v) = ebu.prev_true_peak(c) {
-                        p = p.max(v);
+                for (c, live) in self.live_peaks.iter_mut().enumerate() {
+                    if let Ok(v) = ebu.prev_true_peak(c as u32) {
+                        if v > *live {
+                            *live = v;
+                        }
                     }
-                }
-                if p > self.live_peak {
-                    self.live_peak = p;
                 }
             }
         }
@@ -251,7 +256,7 @@ impl Analyzer {
             self.ebu = EbuR128::new(self.channels as u32, self.sample_rate, Mode::all()).ok();
         }
         self.mono_ring.clear();
-        self.live_peak = 0.0;
+        self.live_peaks.fill(0.0);
         self.generation += 1;
     }
 
@@ -296,28 +301,31 @@ impl Analyzer {
         let sr = self.sample_rate;
         let ch = self.channels;
 
-        // Live peak: max since last emit, then reset the accumulator.
-        let live_lin = self.live_peak;
-        self.live_peak = 0.0;
+        // Live peaks: max since last emit per channel, then reset the
+        // accumulators.
+        let true_peak_ch_db: Vec<f64> = self.live_peaks.iter().map(|&p| lin_to_db(p)).collect();
+        let live_lin = self.live_peaks.iter().copied().fold(0.0f64, f64::max);
+        self.live_peaks.fill(0.0);
 
-        let (momentary, short_term, integrated, lra, max_lin) = match self.ebu.as_ref() {
-            Some(e) => {
-                let mut peak = 0.0f64;
-                for c in 0..ch as u32 {
-                    if let Ok(p) = e.true_peak(c) {
-                        peak = peak.max(p);
-                    }
-                }
-                (
-                    clean(e.loudness_momentary().ok(), LOUDNESS_FLOOR),
-                    clean(e.loudness_shortterm().ok(), LOUDNESS_FLOOR),
-                    clean(e.loudness_global().ok(), LOUDNESS_FLOOR),
-                    clean(e.loudness_range().ok(), 0.0),
-                    peak,
-                )
-            }
-            None => (LOUDNESS_FLOOR, LOUDNESS_FLOOR, LOUDNESS_FLOOR, 0.0, 0.0),
+        let (momentary, short_term, integrated, lra, max_ch_lin) = match self.ebu.as_ref() {
+            Some(e) => (
+                clean(e.loudness_momentary().ok(), LOUDNESS_FLOOR),
+                clean(e.loudness_shortterm().ok(), LOUDNESS_FLOOR),
+                clean(e.loudness_global().ok(), LOUDNESS_FLOOR),
+                clean(e.loudness_range().ok(), 0.0),
+                (0..ch as u32)
+                    .map(|c| e.true_peak(c).unwrap_or(0.0))
+                    .collect::<Vec<f64>>(),
+            ),
+            None => (
+                LOUDNESS_FLOOR,
+                LOUDNESS_FLOOR,
+                LOUDNESS_FLOOR,
+                0.0,
+                vec![0.0; ch as usize],
+            ),
         };
+        let max_lin = max_ch_lin.iter().copied().fold(0.0f64, f64::max);
 
         Metrics {
             momentary,
@@ -326,6 +334,8 @@ impl Analyzer {
             lra,
             true_peak_db: lin_to_db(live_lin),
             true_peak_max_db: lin_to_db(max_lin),
+            true_peak_ch_db,
+            true_peak_ch_max_db: max_ch_lin.iter().map(|&p| lin_to_db(p)).collect(),
             spectrum: self.spectrum(),
             sample_rate: sr,
             channels: ch,
@@ -1694,6 +1704,50 @@ mod tests {
         let m = a.metrics();
         assert_eq!(m.channels, 2);
         assert!(m.integrated > LOUDNESS_FLOOR);
+    }
+
+    #[test]
+    fn true_peak_is_reported_per_channel() {
+        // L at -6 dBFS, R at -20 dBFS: each channel reports its own peak, and
+        // the overall figures are the louder (left) channel's.
+        let mut a = analyzer(48_000, 2, vec![0, 1]);
+        let mono = mono_sine(997.0, 1.0, 1.0, 48_000);
+        let mut interleaved = Vec::with_capacity(mono.len() * 2);
+        for &s in &mono {
+            interleaved.push(s * 0.5);
+            interleaved.push(s * 0.1);
+        }
+        a.process(&interleaved);
+        let m = a.metrics();
+        assert_eq!(m.true_peak_ch_db.len(), 2);
+        assert_eq!(m.true_peak_ch_max_db.len(), 2);
+        for (name, ch) in [
+            ("live", &m.true_peak_ch_db),
+            ("max", &m.true_peak_ch_max_db),
+        ] {
+            assert!(
+                (ch[0] - (-6.02)).abs() < 1.0,
+                "{name} L out of range: {}",
+                ch[0]
+            );
+            assert!(
+                (ch[1] - (-20.0)).abs() < 1.0,
+                "{name} R out of range: {}",
+                ch[1]
+            );
+        }
+        assert_eq!(m.true_peak_db, m.true_peak_ch_db[0]);
+        assert_eq!(m.true_peak_max_db, m.true_peak_ch_max_db[0]);
+
+        // The live peaks are per-emit accumulators; the held maxima persist.
+        let m2 = a.metrics();
+        assert_eq!(m2.true_peak_ch_db, vec![PEAK_FLOOR; 2]);
+        assert_eq!(m2.true_peak_ch_max_db, m.true_peak_ch_max_db);
+
+        // A mono selection reports a single channel.
+        let mut mono_a = analyzer(48_000, 1, vec![0]);
+        mono_a.process(&mono_sine(997.0, 0.5, 1.0, 48_000));
+        assert_eq!(mono_a.metrics().true_peak_ch_db.len(), 1);
     }
 
     // --- Optional ffmpeg cross-check (manual) -------------------------------

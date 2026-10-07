@@ -43,6 +43,8 @@ interface Metrics {
 	lra: number;
 	truePeakDb: number;
 	truePeakMaxDb: number;
+	truePeakChDb: number[]; // per metered channel (L, R for a stereo pair)
+	truePeakChMaxDb: number[];
 	spectrum: number[];
 	sampleRate: number;
 	channels: number;
@@ -58,9 +60,37 @@ const LOUDNESS_FLOOR = -70;
 const PEAK_FLOOR = -120;
 const SPECTRUM_FLOOR = -90;
 const SPECTRUM_TOP = 0;
+// Bar-meter scale, shared by the loudness (LUFS) and true-peak (dBTP) bars.
+// The top sits above 0 so inter-sample overs stay on scale.
+const METER_FLOOR = -60;
+const METER_TOP = 3;
+// How far Integrated may sit from the Target before the suggested gain turns
+// hot.
+const TARGET_TOLERANCE_LU = 1;
 // Ballistics expressed as dB/second so they fall at the same real-world rate
 // regardless of display refresh rate or the engine's emit cadence.
 const PEAK_RELEASE_DB_PER_SEC = 60; // live true-peak meter fall
+// Peak-hold markers (Momentary and per-channel true peak): hold the recent
+// peak, then fall back toward the bar.
+const MARKER_HOLD_SEC = 1.5;
+const M_MARKER_FALL_LU_PER_SEC = 5;
+const TP_MARKER_FALL_DB_PER_SEC = 12;
+// Short-term marker: not a peak hold but a slow follower (one-pole smoothing).
+const S_MARKER_TAU_SEC = 1;
+// Loudness-bar scales. "full" shares the true-peak dB scale; the others are
+// the EBU Tech 3341 ranges in LU around the Target. EBU mode defines 0 LU as
+// −23 LUFS, so the "ebu" scales pin the Target there (and lock its control);
+// the "lu" scales are the same ranges around the user's own Target.
+type MeterScale = "full" | "ebu9" | "ebu18" | "lu9" | "lu18";
+const LU_9 = { top: 9, floor: -18, step: 3 };
+const LU_18 = { top: 18, floor: -36, step: 6 };
+const LU_SCALES = { ebu9: LU_9, ebu18: LU_18, lu9: LU_9, lu18: LU_18 };
+const isMeterScale = (v: unknown): v is MeterScale =>
+	v === "full" || (typeof v === "string" && v in LU_SCALES);
+const EBU_TARGET_LUFS = -23;
+// On the LU scales, within ±1 LU of the Target is "on target" (yellow), below
+// is green, above is red — the EBU colour convention.
+const LU_ON_TARGET = 1;
 const SPECTRUM_PEAK_DECAY_DB_PER_SEC = 36; // spectrum peak-hold fall
 // Clamp the per-tick delta so a backgrounded tab (large gap between ticks)
 // doesn't make the meters jump on the first frame back.
@@ -91,11 +121,37 @@ let guideLoudness = 0; // integrated LUFS of the generated signal
 let guideRate = 0; // sample rate guideCurve was computed at
 const guideCache = new Map<string, NoiseReference>(); // "pink:48000" → curve
 let guideFetchSeq = 0; // discards stale async fetch results
-const DEFAULT_GUIDE_TARGET_LUFS = -20; // anchor when Target is empty/invalid
-let displayedPeak = PEAK_FLOOR; // live true-peak with release ballistics
+const DEFAULT_GUIDE_TARGET_LUFS = -23; // anchor when Target is empty/invalid
+// Live true peak with release ballistics, per metered channel (the bars).
+let displayedPeaks: number[] = [];
+// A peak-hold marker: its level, and how long it has been holding there.
+interface HoldMarker {
+	value: number;
+	heldSec: number;
+}
+let tpMarkers: HoldMarker[] = []; // true-peak markers, per metered channel
+let mMarker: HoldMarker = { value: LOUDNESS_FLOOR, heldSec: 0 }; // Momentary
+let sMarker = LOUDNESS_FLOOR; // Short-term marker level (slow follower)
 let lastPeakTs = 0; // timestamp of the last true-peak ballistics update (ms)
 let lastFrameTs = 0; // timestamp of the last spectrum frame (ms)
 let clipLatched = false;
+// When the current integrated measurement began (Start or the last Reset), on
+// the performance.now() clock; drives the "Measured for" timer.
+let measureStart = 0;
+let shownElapsedSec = -1;
+// Which plots are visible; both persist in settings.json. The bar meters are
+// the default view; the spectrum is opt-in.
+let showMeters = true;
+let showSpectrum = false;
+// Numeric readouts for the live quantities (True Peak, Momentary, Short-term).
+// Off leaves only Integrated + LRA above the bars. Persisted.
+let showTpReadout = true;
+let showMsReadouts = true;
+let showSuggestedGain = true; // the "Suggested gain" figure in the target row
+let meterScale: MeterScale = "full"; // persisted
+// Compact view: only the transport, a slim readout row, and the plots — sized
+// for tiling several meter windows on one display. Persisted.
+let compact = false;
 // Measurement generation of the most recent meter-update. The engine bumps it
 // on every stream (re)configure and Reset, so metrics computed *before* a
 // Reset we requested are identifiable while still in flight.
@@ -142,8 +198,27 @@ const maxHoldInput = $<HTMLInputElement>("maxHold");
 const maxHoldClearBtn = $<HTMLButtonElement>("maxHoldClear");
 const freezeRefBtn = $<HTMLButtonElement>("freezeRef");
 const clearRefBtn = $<HTMLButtonElement>("clearRef");
+const compactToggle = $<HTMLButtonElement>("compactToggle");
+const settingsToggle = $<HTMLButtonElement>("settingsToggle");
+const settingsPanel = $<HTMLDivElement>("settingsPanel");
+const elapsedEl = $<HTMLSpanElement>("elapsed");
+const elapsedTime = $<HTMLSpanElement>("elapsedTime");
+const showMetersInput = $<HTMLInputElement>("showMeters");
+const showSpectrumInput = $<HTMLInputElement>("showSpectrum");
+const showTpReadoutInput = $<HTMLInputElement>("showTpReadout");
+const showMsReadoutsInput = $<HTMLInputElement>("showMsReadouts");
+const showSuggestedGainInput = $<HTMLInputElement>("showSuggestedGain");
+const ebuTag = $<HTMLSpanElement>("ebuTag");
+const meterScaleSelect = $<HTMLSelectElement>("meterScale");
+const plots = $<HTMLElement>("plots");
+const metersPanel = $<HTMLDivElement>("metersPanel");
+const metersWrap = $<HTMLDivElement>("metersWrap");
+const spectrumPanel = $<HTMLDivElement>("spectrumPanel");
+const maxHoldHint = $<HTMLSpanElement>("maxHoldHint");
 const canvas = $<HTMLCanvasElement>("spectrum");
 const ctx = canvas.getContext("2d")!;
+const metersCanvas = $<HTMLCanvasElement>("meters");
+const mctx = metersCanvas.getContext("2d")!;
 
 // Input types that swallow typed characters. Anything else (checkbox, button,
 // range, …) leaves plain letters unused, so the letter shortcuts may claim them.
@@ -197,13 +272,24 @@ async function persist() {
 			"sampleRate",
 			rateSelect.value ? Number(rateSelect.value) : null,
 		);
-		await store.set("target", numOrNull(targetInput.value));
+		// On an EBU scale the input shows the pinned −23; save the user's own.
+		await store.set(
+			"target",
+			numOrNull(isEbuScale() ? userTarget : targetInput.value),
+		);
 		await store.set("ceiling", numOrNull(ceilingInput.value));
 		await store.set("autoStart", autostartInput.checked);
 		// The max-hold toggle and guide selection persist; the held data and
 		// the frozen reference are deliberately session-only.
 		await store.set("maxHold", maxHoldOn);
 		await store.set("guide", guideKind);
+		await store.set("showMeters", showMeters);
+		await store.set("showSpectrum", showSpectrum);
+		await store.set("showTpReadout", showTpReadout);
+		await store.set("showMsReadouts", showMsReadouts);
+		await store.set("showSuggestedGain", showSuggestedGain);
+		await store.set("meterScale", meterScale);
+		await store.set("compact", compact);
 		await store.save();
 	} catch {
 		// Persistence is best-effort; never block metering on a failed write.
@@ -399,6 +485,11 @@ function deviceLabel(d: DeviceInfo): string {
 	return d.isDefault ? `${d.name} (default)` : d.name;
 }
 
+function setSettingsOpen(open: boolean) {
+	settingsPanel.hidden = !open;
+	settingsToggle.setAttribute("aria-expanded", String(open));
+}
+
 // (Re)render the device <option>s. If `keep` is the id of a device that's still
 // present it stays selected; otherwise the system default (or first device)
 // is selected. Shared by the initial load and the hotplug poller.
@@ -579,8 +670,8 @@ async function start() {
 		running = true;
 		clipLatched = false;
 		latchHoldGeneration = lastGeneration;
-		displayedPeak = PEAK_FLOOR;
-		lastPeakTs = 0;
+		resetBallistics();
+		restartElapsed();
 		// Drop the previous session's spectrum peak-hold so the new capture
 		// starts clean rather than under a stale, decaying peak line. The
 		// persistent max-hold and frozen reference intentionally survive
@@ -595,7 +686,11 @@ async function start() {
 		// idle-time guess differed (the per-rate cache makes this cheap).
 		if (guideKind && info.sampleRate !== guideRate)
 			void refreshGuide(info.sampleRate);
-		const mode = info.channels === 1 ? "mono" : `${info.channels} ch`;
+		// Name the metered channels ("Ch 3–4"), not just how many: with several
+		// windows open on one interface that is what tells them apart.
+		const mode =
+			channelSelect.selectedOptions[0]?.textContent ||
+			(info.channels === 1 ? "mono" : `${info.channels} ch`);
 		setStatus(`${info.sampleRate / 1000} kHz · ${mode}`, "ok");
 		hideError();
 		maybeShowResetHint();
@@ -638,6 +733,7 @@ function teardownRunningUi() {
 	// Tuck the hint away with the session; seen-state is untouched so a user who
 	// never engaged still gets it next time.
 	resetHint.hidden = true;
+	elapsedEl.hidden = true;
 	configControlsEnabled(true);
 	requestFrame(); // one final repaint to clear the bars, then the loop idles
 }
@@ -671,22 +767,87 @@ function handleStreamError(message: string) {
 	reportError("Audio device", message);
 }
 
-function updateReadouts(m: Metrics) {
-	$("integrated").textContent = fmt(m.integrated);
-	$("shortTerm").textContent = fmt(m.shortTerm);
-	$("momentary").textContent = fmt(m.momentary);
-	$("lra").textContent = m.lra > 0 ? m.lra.toFixed(1) : "0.0";
+// "Measured for 02:34": how long the integrated measurement has been running.
+// Timed on the UI side from Start / Reset, so it can lead the engine's own
+// window by the few milliseconds a Reset takes to arrive.
+function restartElapsed() {
+	measureStart = performance.now();
+	shownElapsedSec = -1;
+	elapsedEl.hidden = false;
+	updateElapsed(measureStart);
+}
 
+function updateElapsed(now: number) {
+	const sec = Math.max(0, Math.floor((now - measureStart) / 1000));
+	if (sec === shownElapsedSec) return; // touch the DOM once a second, not per frame
+	shownElapsedSec = sec;
+	const pad = (n: number) => String(n).padStart(2, "0");
+	const h = Math.floor(sec / 3600);
+	const ms = `${pad(Math.floor((sec % 3600) / 60))}:${pad(sec % 60)}`;
+	elapsedTime.textContent = h > 0 ? `${h}:${ms}` : ms;
+}
+
+// Drop the meter ballistics (true-peak release, loudness markers) so a new
+// measurement doesn't start under the previous one's decaying values.
+function resetBallistics() {
+	displayedPeaks = [];
+	tpMarkers = [];
+	mMarker = { value: LOUDNESS_FLOOR, heldSec: 0 };
+	sMarker = LOUDNESS_FLOOR;
+	lastPeakTs = 0;
+}
+
+function updateReadouts(m: Metrics) {
 	// Live true peak with release ballistics; held max from the engine.
 	const now = performance.now();
 	const dt = lastPeakTs ? Math.min((now - lastPeakTs) / 1000, MAX_TICK_SEC) : 0;
 	lastPeakTs = now;
-	const live = m.truePeakDb;
-	displayedPeak =
-		live > displayedPeak
-			? live
-			: Math.max(live, displayedPeak - PEAK_RELEASE_DB_PER_SEC * dt);
-	$("truePeak").textContent = fmt(displayedPeak, PEAK_FLOOR);
+	const release = (live: number, shown: number) =>
+		live > shown ? live : Math.max(live, shown - PEAK_RELEASE_DB_PER_SEC * dt);
+	displayedPeaks = m.truePeakChDb.map((live, c) =>
+		release(live, displayedPeaks[c] ?? PEAK_FLOOR),
+	);
+
+	// Peak-hold markers: jump up with the level, hold, then fall back to it.
+	const holdFall = (
+		live: number,
+		mark: HoldMarker | undefined,
+		fallPerSec: number,
+	): HoldMarker => {
+		if (!mark || live >= mark.value) return { value: live, heldSec: 0 };
+		const heldSec = mark.heldSec + dt;
+		return {
+			value:
+				heldSec > MARKER_HOLD_SEC
+					? Math.max(live, mark.value - fallPerSec * dt)
+					: mark.value,
+			heldSec,
+		};
+	};
+	tpMarkers = m.truePeakChDb.map((live, c) =>
+		holdFall(live, tpMarkers[c], TP_MARKER_FALL_DB_PER_SEC),
+	);
+	mMarker = holdFall(m.momentary, mMarker, M_MARKER_FALL_LU_PER_SEC);
+	// Short-term marker: ease toward the bar; snap when there is nothing to
+	// ease from (first frame, or silence on either side).
+	sMarker =
+		dt === 0 || sMarker <= LOUDNESS_FLOOR || m.shortTerm <= LOUDNESS_FLOOR
+			? m.shortTerm
+			: sMarker +
+				(m.shortTerm - sMarker) * (1 - Math.exp(-dt / S_MARKER_TAU_SEC));
+
+	// The Momentary and Short-term numbers show their marker, not the raw
+	// value, so they change slowly enough to read.
+	$("integrated").textContent = fmt(m.integrated);
+	$("shortTerm").textContent = fmt(sMarker);
+	$("momentary").textContent = fmt(mMarker.value);
+	$("lra").textContent = m.lra > 0 ? m.lra.toFixed(1) : "0.0";
+	// Like the loudness numbers, the true-peak number shows the marker (the
+	// louder channel's), so it holds long enough to read.
+	$("truePeak").textContent = fmt(
+		Math.max(PEAK_FLOOR, ...tpMarkers.map((t) => t.value)),
+		PEAK_FLOOR,
+	);
 	$("truePeakMax").textContent = fmt(m.truePeakMaxDb, PEAK_FLOOR);
 
 	// Clip indicator latches once the held max crosses the ceiling — but only
@@ -706,28 +867,117 @@ function updateReadouts(m: Metrics) {
 	if (Number.isFinite(target) && m.integrated > LOUDNESS_FLOOR) {
 		const gain = target - m.integrated;
 		const sign = gain >= 0 ? "+" : "−";
-		deltaEl.innerHTML = `<span class="delta-label">apply</span> <strong>${sign}${Math.abs(gain).toFixed(1)} dB</strong>`;
-		deltaEl.classList.toggle("hot", Math.abs(gain) > 1);
+		deltaEl.innerHTML = `<span class="delta-label">Suggested gain</span> <strong>${sign}${Math.abs(gain).toFixed(1)} dB</strong>`;
+		deltaEl.classList.toggle("hot", Math.abs(gain) > TARGET_TOLERANCE_LU);
 	} else {
-		deltaEl.innerHTML = `<span class="delta-label">apply</span> <strong>—</strong>`;
+		deltaEl.innerHTML = `<span class="delta-label">Suggested gain</span> <strong>—</strong>`;
 		deltaEl.classList.remove("hot");
 	}
 }
 
-function resizeCanvas() {
+function syncCanvas(c: HTMLCanvasElement, cx: CanvasRenderingContext2D) {
 	const dpr = window.devicePixelRatio || 1;
-	const rect = canvas.getBoundingClientRect();
+	const rect = c.getBoundingClientRect();
 	const w = Math.max(1, Math.round(rect.width * dpr));
 	const h = Math.max(1, Math.round(rect.height * dpr));
 	// Skip when nothing changed — assigning canvas.width/height clears the buffer
 	// even if the value is identical, and the ResizeObserver below fires an
 	// initial observation plus every layout tick, so guard against pointless work.
-	if (w === canvas.width && h === canvas.height) return;
-	canvas.width = w;
-	canvas.height = h;
-	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	if (w === c.width && h === c.height) return;
+	c.width = w;
+	c.height = h;
+	cx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	// Repaint at the new size; while idle the loop is stopped, so without this
 	// the canvas would stay blank/stretched until the next capture.
+	requestFrame();
+}
+
+function resizeCanvas() {
+	syncMeterHeads();
+	syncCanvas(canvas, ctx);
+	syncCanvas(metersCanvas, mctx);
+}
+
+// Size the readouts above the bars to their column: large when there is room,
+// abbreviated (TP / M / S / I) once the full names no longer fit.
+// The grid also mirrors the canvas: one column per bar (the True Peak head
+// spans its per-channel bars) and the same right gutter as the LU axis.
+function syncMeterHeads() {
+	headTpBars = tpBarCount();
+	headLuAxis = luScale() !== null;
+	metersPanel.style.setProperty("--meter-cols", String(headTpBars + 3));
+	metersPanel.style.setProperty("--tp-span", String(headTpBars));
+	metersPanel.classList.toggle("lu-axis", headLuAxis);
+	// Measure a real column (the grid's gutters vary with the scale), not the
+	// panel: the full names need ~90px before they run into their neighbours.
+	const col = tpCard.getBoundingClientRect().width / headTpBars;
+	metersPanel.classList.toggle("wide", col >= 142);
+	metersPanel.classList.toggle("tight", col < 90);
+}
+
+// What the readout grid was last laid out for; drawMeters re-syncs on a change.
+let headTpBars = 1;
+let headLuAxis = false;
+
+// One true-peak bar per metered channel: from the live metrics while
+// capturing, otherwise from the channel picker so the idle layout matches.
+function tpBarCount(): number {
+	const n =
+		latest?.truePeakChDb?.length ||
+		(channelSelect.value ? channelSelect.value.split(",").length : 1);
+	return Math.max(1, n);
+}
+
+// The LU scale in effect, or null on the full-range scale. An LU scale needs
+// a Target to hang 0 LU on, so it falls back to full range without one.
+function luScale() {
+	if (meterScale === "full") return null;
+	return Number.isFinite(parseFloat(targetInput.value))
+		? LU_SCALES[meterScale]
+		: null;
+}
+
+function isEbuScale(): boolean {
+	return meterScale === "ebu9" || meterScale === "ebu18";
+}
+
+// The Target as the user set it. On an EBU scale the input is pinned to −23
+// and locked; this is what comes back when they leave it (and what persists).
+let userTarget = targetInput.value;
+
+// Pin and lock the Target on an EBU scale; restore the user's own otherwise.
+function syncTargetLock() {
+	const ebu = isEbuScale();
+	if (ebu) targetInput.value = String(EBU_TARGET_LUFS);
+	else if (targetInput.disabled) targetInput.value = userTarget;
+	targetInput.disabled = ebu;
+	const field = targetInput.closest(".num-field");
+	field?.classList.toggle("locked", ebu);
+	for (const btn of field?.querySelectorAll<HTMLButtonElement>(".num-step") ??
+		[])
+		btn.disabled = ebu;
+	ebuTag.hidden = !ebu;
+}
+
+// Show/hide the two plots and apply compact view. The readouts stay put when
+// the bars are hidden. Syncing the backing stores here (rather than waiting
+// for the ResizeObserver) avoids a blank frame when a plot is revealed or the
+// meters widen to fill the row.
+function applyView() {
+	metersWrap.hidden = !showMeters;
+	spectrumPanel.hidden = !showSpectrum;
+	// The max-hold shortcut is only worth advertising with the spectrum up.
+	maxHoldHint.hidden = !showSpectrum;
+	plots.classList.toggle("no-bars", !showMeters);
+	metersPanel.classList.toggle("no-tp-readout", !showTpReadout);
+	metersPanel.classList.toggle("no-ms-readouts", !showMsReadouts);
+	deltaEl.hidden = !showSuggestedGain;
+	// The Reset hint is about settling the suggested gain; it goes with it.
+	document.body.classList.toggle("no-suggested-gain", !showSuggestedGain);
+	document.body.classList.toggle("compact", compact);
+	compactToggle.textContent = compact ? "Expand" : "Compact";
+	compactToggle.setAttribute("aria-pressed", String(compact));
+	resizeCanvas();
 	requestFrame();
 }
 
@@ -780,7 +1030,41 @@ const PLOT_PAD_BOTTOM = 14;
 const PLOT_PAD_TOP = 4;
 const PLOT_PAD_RIGHT = 14;
 
-function drawSpectrum(dt: number) {
+// Hold state is tracked apart from drawing so that hiding the spectrum (or a
+// throttled render loop) never leaves a gap in it.
+
+// Persistent max-hold: fed from every meter-update, so it sees each emitted
+// spectrum whether or not a frame is drawn for it.
+function trackMaxHold(spec: number[]) {
+	const n = spec.length;
+	if (maxPeaks.length !== n) maxPeaks = new Array(n).fill(SPECTRUM_FLOOR);
+	// The persistent max accumulates only while its toggle is on, so
+	// enabling it holds from "now" rather than from unseen history.
+	if (!maxHoldOn) return;
+	for (let i = 0; i < n; i++) {
+		const db = Math.max(SPECTRUM_FLOOR, Math.min(SPECTRUM_TOP, spec[i]));
+		if (db > maxPeaks[i]) maxPeaks[i] = db;
+	}
+}
+
+// Decaying peak-hold: advanced once per frame (it needs the frame delta).
+function trackPeakHold(dt: number) {
+	const spec = latest?.spectrum;
+	if (!spec || spec.length === 0) return;
+	const n = spec.length;
+	if (peaks.length !== n) peaks = new Array(n).fill(SPECTRUM_FLOOR);
+	for (let i = 0; i < n; i++) {
+		const db = Math.max(SPECTRUM_FLOOR, Math.min(SPECTRUM_TOP, spec[i]));
+		if (db > peaks[i]) peaks[i] = db;
+		else
+			peaks[i] = Math.max(
+				SPECTRUM_FLOOR,
+				peaks[i] - SPECTRUM_PEAK_DECAY_DB_PER_SEC * dt,
+			);
+	}
+}
+
+function drawSpectrum() {
 	const w = canvas.clientWidth;
 	const h = canvas.clientHeight;
 	ctx.clearRect(0, 0, w, h);
@@ -867,9 +1151,6 @@ function drawSpectrum(dt: number) {
 	const spec = latest?.spectrum;
 	if (spec && spec.length > 0) {
 		const n = spec.length;
-		if (peaks.length !== n) peaks = new Array(n).fill(SPECTRUM_FLOOR);
-		if (maxPeaks.length !== n) maxPeaks = new Array(n).fill(SPECTRUM_FLOOR);
-
 		const barW = pw / n;
 
 		const grad = ctx.createLinearGradient(0, pt, 0, pb);
@@ -884,21 +1165,10 @@ function drawSpectrum(dt: number) {
 			// Bands over the clip ceiling render hot instead of the gradient.
 			ctx.fillStyle = hasCeil && spec[i] >= ceil ? "#ff5d5d" : grad;
 			ctx.fillRect(pl + i * barW, y, barW - 1, pb - y);
-
-			if (db > peaks[i]) peaks[i] = db;
-			else
-				peaks[i] = Math.max(
-					SPECTRUM_FLOOR,
-					peaks[i] - SPECTRUM_PEAK_DECAY_DB_PER_SEC * dt,
-				);
-
-			// The persistent max accumulates only while its toggle is on, so
-			// enabling it holds from "now" rather than from unseen history.
-			if (maxHoldOn && db > maxPeaks[i]) maxPeaks[i] = db;
 		}
 
 		ctx.fillStyle = "rgba(255,255,255,0.75)";
-		for (let i = 0; i < n; i++) {
+		for (let i = 0; i < Math.min(n, peaks.length); i++) {
 			const y = toY(peaks[i]);
 			ctx.fillRect(pl + i * barW, y - 1, barW - 1, 2);
 		}
@@ -1045,9 +1315,314 @@ function drawHover(
 	ctx.textBaseline = "alphabetic";
 }
 
+// ---- Bar meters -------------------------------------------------------------
+// Vertical Integrated / Short-term / Momentary loudness bars plus a true-peak
+// bar, on one shared dB scale, each under its numeric readout (.meter-heads).
+// Bars are the meter green; the part of a loudness bar above the Target turns
+// amber, and the part of the true-peak bar above the clip ceiling turns red.
+// METER_PAD_RIGHT and PLOT_PAD_LEFT are mirrored by .meter-heads' padding in
+// styles.css so the readouts line up with the bars.
+const METER_PAD_TOP = 6;
+const METER_PAD_BOTTOM = 6;
+const METER_PAD_BOTTOM_LABELS = 16; // room for the L / R and EBU labels under the bars
+const METER_PAD_RIGHT = 6;
+const METER_PAD_RIGHT_LU = 26; // room for the LU scale (.lu-axis in styles.css)
+const METER_MAX_BAR_W = 120;
+const METER_GREEN = "#54e08a";
+const METER_AMBER = "#f2c14e";
+const METER_RED = "#ff5d5d";
+
+function drawMeters() {
+	const nTp = tpBarCount();
+	const target = parseFloat(targetInput.value);
+	const lu = luScale();
+	if (nTp !== headTpBars || (lu !== null) !== headLuAxis) syncMeterHeads();
+
+	const w = metersCanvas.clientWidth;
+	const h = metersCanvas.clientHeight;
+	mctx.clearRect(0, 0, w, h);
+
+	mctx.fillStyle = "#0c0e13";
+	mctx.fillRect(0, 0, w, h);
+
+	const padR = lu ? METER_PAD_RIGHT_LU : METER_PAD_RIGHT;
+	const ebu = lu !== null && isEbuScale();
+	const padB = nTp > 1 || ebu ? METER_PAD_BOTTOM_LABELS : METER_PAD_BOTTOM;
+	const pl = PLOT_PAD_LEFT;
+	const pt = METER_PAD_TOP;
+	const pw = Math.max(1, w - PLOT_PAD_LEFT - padR);
+	const ph = Math.max(1, h - METER_PAD_TOP - padB);
+	const pb = pt + ph;
+
+	// Two axes share the plot height: dB on the left (always the true-peak
+	// bars; the loudness bars too on the full-range scale) and, on an LU
+	// scale, LU around the Target on the right for the loudness bars.
+	type Axis = { top: number; floor: number };
+	const dbAxis: Axis = { top: METER_TOP, floor: METER_FLOOR };
+	const loudAxis: Axis = lu
+		? { top: target + lu.top, floor: target + lu.floor }
+		: dbAxis;
+	const toY = (axis: Axis, v: number) =>
+		pt +
+		((axis.top - Math.max(axis.floor, Math.min(axis.top, v))) /
+			(axis.top - axis.floor)) *
+			ph;
+
+	const slot = pw / (nTp + 3);
+	const barW = Math.max(2, Math.min(slot * 0.62, METER_MAX_BAR_W));
+	const tpW = slot * nTp; // true-peak bars come first; loudness bars follow
+	const loudX = pl + tpW;
+	const loudW = slot * 3;
+
+	mctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+	mctx.lineWidth = 1;
+	mctx.textBaseline = "middle";
+	const MIN_LABEL_GAP = 13; // px between scale labels before thinning them
+	const gridLine = (x0: number, x1: number, y: number) => {
+		mctx.strokeStyle = "rgba(255,255,255,0.05)";
+		mctx.beginPath();
+		mctx.moveTo(x0, y + 0.5);
+		mctx.lineTo(x1, y + 0.5);
+		mctx.stroke();
+	};
+
+	// dB grid lines + labels in the left gutter: every 5 dB when there is room.
+	const dbStep = (ph * 5) / (METER_TOP - METER_FLOOR) >= MIN_LABEL_GAP ? 5 : 10;
+	const dbGridRight = lu ? loudX : pl + pw;
+	mctx.textAlign = "right";
+	mctx.fillStyle = "rgba(255,255,255,0.32)";
+	for (let db = 0; db >= METER_FLOOR; db -= dbStep) {
+		const y = toY(dbAxis, db);
+		gridLine(pl, dbGridRight, y);
+		mctx.fillText(`${db}`, pl - 4, y);
+	}
+	// The top of the scale, when its label clears the 0 beneath it.
+	if (toY(dbAxis, 0) - pt >= MIN_LABEL_GAP - 2)
+		mctx.fillText(`+${METER_TOP}`, pl - 4, pt);
+
+	// LU grid lines + labels in the right gutter, on multiples of the step so
+	// 0 LU (the Target) is always one of them.
+	if (lu) {
+		let step: number = lu.step;
+		while ((ph * step) / (lu.top - lu.floor) < MIN_LABEL_GAP) step *= 2;
+		mctx.textAlign = "left";
+		for (let v = Math.ceil(lu.floor / step) * step; v <= lu.top; v += step) {
+			const y = toY(loudAxis, target + v);
+			gridLine(loudX, pl + pw, y);
+			mctx.fillStyle = `rgba(255,255,255,${v === 0 ? 0.6 : 0.32})`;
+			mctx.fillText(v > 0 ? `+${v}` : `${v}`, pl + pw + 4, y);
+		}
+	}
+
+	const hasTarget = lu
+		? true
+		: Number.isFinite(target) && target < METER_TOP && target > METER_FLOOR;
+	const ceil = parseFloat(ceilingInput.value);
+	const hasCeil =
+		Number.isFinite(ceil) && ceil <= METER_TOP && ceil >= METER_FLOOR;
+
+	// Same green as the spectrum bars' lower range, anchored to the scale so
+	// every bar shades identically at a given level.
+	const green = mctx.createLinearGradient(0, pb, 0, pt);
+	green.addColorStop(0, "#2a9d8f");
+	green.addColorStop(1, METER_GREEN);
+
+	// A bar is filled zone by zone, bottom up; `mark` is the flat colour a
+	// marker takes while it sits in that zone.
+	type Zone = { upTo: number; fill: string | CanvasGradient; mark: string };
+	const greenTo = (upTo: number): Zone => ({
+		upTo,
+		fill: green,
+		mark: METER_GREEN,
+	});
+	const loudZones: Zone[] = lu
+		? [
+				greenTo(target - LU_ON_TARGET),
+				{ upTo: target + LU_ON_TARGET, fill: METER_AMBER, mark: METER_AMBER },
+				{ upTo: Infinity, fill: METER_RED, mark: METER_RED },
+			]
+		: hasTarget
+			? [
+					greenTo(target),
+					{ upTo: Infinity, fill: METER_AMBER, mark: METER_AMBER },
+				]
+			: [greenTo(Infinity)];
+	const peakZones: Zone[] = [
+		greenTo(hasCeil ? ceil : 0),
+		{ upTo: Infinity, fill: METER_RED, mark: METER_RED },
+	];
+
+	// Same order as the readouts above, fastest to slowest: True Peak (one bar
+	// per channel), Momentary, Short-term, Integrated.
+	interface Bar {
+		value: number | undefined;
+		axis: Axis;
+		zones: Zone[];
+		marker?: { value: number; onBar: boolean };
+		label?: string; // under the bar
+	}
+	const bars: Bar[] = [];
+	for (let c = 0; c < nTp; c++) {
+		bars.push({
+			value: latest ? displayedPeaks[c] : undefined,
+			axis: dbAxis,
+			zones: peakZones,
+			marker:
+				latest && tpMarkers[c]
+					? { value: tpMarkers[c].value, onBar: false }
+					: undefined,
+			label: nTp === 2 ? "LR"[c] : nTp > 2 ? `${c + 1}` : undefined,
+		});
+	}
+	bars.push(
+		{
+			value: latest?.momentary,
+			axis: loudAxis,
+			zones: loudZones,
+			marker: latest ? { value: mMarker.value, onBar: false } : undefined,
+		},
+		{
+			value: latest?.shortTerm,
+			axis: loudAxis,
+			zones: loudZones,
+			marker: latest ? { value: sMarker, onBar: true } : undefined,
+		},
+		{ value: latest?.integrated, axis: loudAxis, zones: loudZones },
+	);
+
+	// Faint divider: the true-peak bars are a different quantity (dBTP, not LUFS).
+	mctx.strokeStyle = "rgba(255,255,255,0.10)";
+	mctx.beginPath();
+	mctx.moveTo(Math.round(loudX) + 0.5, pt);
+	mctx.lineTo(Math.round(loudX) + 0.5, pb);
+	mctx.stroke();
+
+	for (let i = 0; i < bars.length; i++) {
+		const { value, axis, zones, marker, label } = bars[i];
+		const x = pl + (i + 0.5) * slot - barW / 2;
+
+		mctx.fillStyle = "rgba(255,255,255,0.04)";
+		mctx.fillRect(x, pt, barW, ph);
+
+		if (value !== undefined && Number.isFinite(value) && value > axis.floor) {
+			const top = Math.min(value, axis.top);
+			let lo = axis.floor;
+			for (const zone of zones) {
+				const hi = Math.min(zone.upTo, top);
+				if (hi > lo) {
+					mctx.fillStyle = zone.fill;
+					mctx.fillRect(x, toY(axis, hi), barW, toY(axis, lo) - toY(axis, hi));
+					lo = hi;
+				}
+				if (lo >= top) break;
+			}
+		}
+
+		// Markers: a solid pill in its zone's colour. The true-peak and
+		// Momentary peak holds never sit below their bar top; the slow Short-term follower
+		// can, so it gets a dark edge to stay legible against the bar.
+		if (marker && marker.value > axis.floor) {
+			const y = Math.round(toY(axis, marker.value));
+			if (marker.onBar) {
+				mctx.fillStyle = "rgba(12, 14, 19, 0.9)";
+				mctx.fillRect(x, y - 2.5, barW, 5);
+			}
+			const zone = zones.find((z) => marker.value <= z.upTo);
+			mctx.fillStyle = zone ? zone.mark : METER_GREEN;
+			mctx.fillRect(x, y - 1.5, barW, 3);
+		}
+
+		if (label) {
+			mctx.fillStyle = "rgba(255,255,255,0.45)";
+			mctx.textAlign = "center";
+			mctx.fillText(label, x + barW / 2, pb + padB / 2 + 1);
+		}
+	}
+
+	// Name the mode under the loudness bars, so it shows in compact view too.
+	if (ebu && lu) {
+		const text = [`EBU R 128 · +${lu.top} scale`, `EBU +${lu.top}`].find(
+			(t) => mctx.measureText(t).width <= loudW - 8,
+		);
+		if (text) {
+			mctx.fillStyle = "rgba(110, 168, 254, 0.9)";
+			mctx.textAlign = "center";
+			mctx.fillText(text, loudX + loudW / 2, pb + padB / 2 + 1);
+		}
+	}
+
+	// Target line across the loudness bars, ceiling line across the true peak.
+	// Each label sits in a gap beside a bar — between Short-term and Integrated
+	// for the target; for the ceiling, between the two true-peak bars, or right
+	// of a lone one — never on a bar, where it would hide the bar's top edge
+	// right at the limit.
+	const gutter = (slot - barW) / 2;
+	if (hasTarget) {
+		meterLimitLine(
+			loudX,
+			loudW,
+			toY(loudAxis, target),
+			pt,
+			"rgba(110, 168, 254, 0.95)",
+			[`target ${target} LUFS`, `target ${target}`, `${target}`],
+			loudX + slot * 2 - gutter,
+			gutter * 2,
+		);
+	}
+	if (hasCeil) {
+		meterLimitLine(
+			pl,
+			tpW,
+			toY(dbAxis, ceil),
+			pt,
+			"rgba(255, 93, 93, 0.95)",
+			[`ceiling ${ceil} dBTP`, `ceiling ${ceil}`, `${ceil}`],
+			nTp > 1 ? pl + slot - gutter : loudX - gutter,
+			nTp > 1 ? gutter * 2 : gutter,
+		);
+	}
+}
+
+// Dashed limit line spanning [x, x + width], labelled on a dark tag centered
+// in the bar-free gap [gapX, gapX + gapW]. `labels` runs longest to shortest;
+// the first one that fits the gap is used, and none is drawn if none fits.
+function meterLimitLine(
+	x: number,
+	width: number,
+	yRaw: number,
+	plotTop: number,
+	color: string,
+	labels: string[],
+	gapX: number,
+	gapW: number,
+) {
+	const y = Math.round(yRaw) + 0.5;
+	mctx.strokeStyle = color;
+	mctx.setLineDash([4, 3]);
+	mctx.beginPath();
+	mctx.moveTo(x, y);
+	mctx.lineTo(x + width, y);
+	mctx.stroke();
+	mctx.setLineDash([]);
+
+	const text = labels.find((t) => mctx.measureText(t).width + 6 <= gapW);
+	if (!text) return;
+	const tagW = mctx.measureText(text).width + 6;
+	const tagH = 13;
+	const left = Math.round(gapX + (gapW - tagW) / 2);
+	// Above the line, unless that would run off the top of the plot.
+	const top = y - 3 - tagH < plotTop ? y + 3 : y - 3 - tagH;
+	mctx.fillStyle = "rgba(12, 14, 19, 0.88)";
+	mctx.fillRect(left, top, tagW, tagH);
+	mctx.fillStyle = color;
+	mctx.textAlign = "left";
+	mctx.textBaseline = "middle";
+	mctx.fillText(text, left + 3, top + tagH / 2 + 0.5);
+}
+
 let rafPending = false;
 
-// Schedule a single spectrum repaint, coalescing repeated requests within the
+// Schedule a single repaint of the plots, coalescing repeated requests within the
 // same frame. While capturing, `frame` re-schedules itself for smooth
 // animation; when idle it draws once and stops, so the canvas isn't redrawn at
 // the display refresh rate for a static, data-less plot — that idle redraw was
@@ -1064,7 +1639,10 @@ function frame(now: number) {
 		? Math.min((now - lastFrameTs) / 1000, MAX_TICK_SEC)
 		: 0;
 	lastFrameTs = now;
-	drawSpectrum(dt);
+	trackPeakHold(dt);
+	if (running) updateElapsed(now);
+	if (showSpectrum) drawSpectrum();
+	if (showMeters) drawMeters();
 	// Keep animating only while capturing (live bars + peak-hold decay). Idle,
 	// the plot is static, so stop until a state change requests a repaint.
 	if (running) {
@@ -1080,9 +1658,9 @@ function resetMeasurement() {
 	// Reset clears the measurement + decaying peak-hold only; the persistent
 	// max-hold and frozen reference have their own Clear controls.
 	peaks = [];
-	displayedPeak = PEAK_FLOOR;
-	lastPeakTs = 0;
+	resetBallistics();
 	clipLatched = false;
+	if (running) restartElapsed();
 	// Suppress clip latching for frames from before this reset; the engine
 	// bumps the generation when it processes it (see latchHoldGeneration).
 	latchHoldGeneration = lastGeneration;
@@ -1156,7 +1734,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 	// until a manual window resize. Observe the element itself so any size change
 	// re-syncs the backing store.
 	window.addEventListener("resize", resizeCanvas);
-	new ResizeObserver(resizeCanvas).observe(canvas);
+	const canvasObserver = new ResizeObserver(resizeCanvas);
+	canvasObserver.observe(canvas);
+	canvasObserver.observe(metersCanvas);
+	canvasObserver.observe(metersPanel);
 
 	// Load persisted settings before touching the controls. Target/ceiling apply
 	// immediately; device/channels/rate are staged as "pending" and reapplied as
@@ -1172,10 +1753,20 @@ window.addEventListener("DOMContentLoaded", async () => {
 		const hintSeen = await store.get<boolean>("resetHintSeen");
 		const mh = await store.get<boolean>("maxHold");
 		const gd = await store.get<string>("guide");
+		const sm = await store.get<boolean>("showMeters");
+		const ss = await store.get<boolean>("showSpectrum");
+		const cp = await store.get<boolean>("compact");
+		const tr = await store.get<boolean>("showTpReadout");
+		const mr = await store.get<boolean>("showMsReadouts");
+		const sg = await store.get<boolean>("showSuggestedGain");
+		// Beta 2 had one combined toggle and target-dependent "9" / "18" scales.
+		const lr = await store.get<boolean>("showLiveReadouts");
+		const ms = await store.get<string>("meterScale");
 		if (dev) pendingDevice = dev;
 		if (typeof ch === "string") pendingChannels = ch;
 		if (typeof sr === "number") pendingRate = sr;
 		if (typeof tgt === "number") targetInput.value = String(tgt);
+		userTarget = targetInput.value;
 		if (typeof ceil === "number") ceilingInput.value = String(ceil);
 		autostartInput.checked = auto === true;
 		resetHintSeen = hintSeen === true;
@@ -1185,9 +1776,27 @@ window.addEventListener("DOMContentLoaded", async () => {
 			guideKind = gd;
 			guideSelect.value = gd;
 		}
+		showMeters = sm !== false;
+		showSpectrum = ss === true;
+		compact = cp === true;
+		showMetersInput.checked = showMeters;
+		showSpectrumInput.checked = showSpectrum;
+		showTpReadout = (tr ?? lr) !== false;
+		showMsReadouts = (mr ?? lr) !== false;
+		showTpReadoutInput.checked = showTpReadout;
+		showMsReadoutsInput.checked = showMsReadouts;
+		showSuggestedGain = sg !== false;
+		showSuggestedGainInput.checked = showSuggestedGain;
+		if (isMeterScale(ms)) meterScale = ms;
+		else if (ms === "9" || ms === "18")
+			meterScale = `${tgt === EBU_TARGET_LUFS ? "ebu" : "lu"}${ms}`;
+		meterScaleSelect.value = meterScale;
 	} catch {
 		// No store yet (first launch) or a read error — fall back to UI defaults.
 	}
+
+	syncTargetLock();
+	applyView();
 
 	await loadDevices();
 
@@ -1265,6 +1874,9 @@ window.addEventListener("DOMContentLoaded", async () => {
 			} else if (e.key.toLowerCase() === "m") {
 				e.preventDefault();
 				maxHoldInput.click(); // Reuse the checkbox's persistence and repaint.
+			} else if (e.key.toLowerCase() === "c") {
+				e.preventDefault();
+				compactToggle.click();
 			}
 		}
 
@@ -1321,10 +1933,55 @@ window.addEventListener("DOMContentLoaded", async () => {
 		});
 	}
 
-	channelSelect.addEventListener("change", () => void persist());
+	channelSelect.addEventListener("change", () => {
+		requestFrame(); // mono ↔ stereo changes the number of true-peak bars
+		void persist();
+	});
+	settingsToggle.addEventListener("click", () =>
+		setSettingsOpen(settingsPanel.hasAttribute("hidden")),
+	);
 	rateSelect.addEventListener("change", () => void persist());
 	autostartInput.addEventListener("change", () => void persist());
+	compactToggle.addEventListener("click", () => {
+		compact = !compact;
+		applyView();
+		void persist();
+	});
+	showMetersInput.addEventListener("change", () => {
+		showMeters = showMetersInput.checked;
+		applyView();
+		void persist();
+	});
+	showSpectrumInput.addEventListener("change", () => {
+		showSpectrum = showSpectrumInput.checked;
+		applyView();
+		void persist();
+	});
+	showTpReadoutInput.addEventListener("change", () => {
+		showTpReadout = showTpReadoutInput.checked;
+		applyView();
+		void persist();
+	});
+	showMsReadoutsInput.addEventListener("change", () => {
+		showMsReadouts = showMsReadoutsInput.checked;
+		applyView();
+		void persist();
+	});
+	showSuggestedGainInput.addEventListener("change", () => {
+		showSuggestedGain = showSuggestedGainInput.checked;
+		applyView();
+		void persist();
+	});
+	meterScaleSelect.addEventListener("change", () => {
+		const v = meterScaleSelect.value;
+		meterScale = isMeterScale(v) ? v : "full";
+		syncTargetLock();
+		if (latest) updateReadouts(latest); // suggested gain follows the Target
+		applyView();
+		void persist();
+	});
 	targetInput.addEventListener("input", () => {
+		userTarget = targetInput.value;
 		if (latest) updateReadouts(latest);
 		requestFrame(); // the target-anchored guide curve moves, even idle
 	});
@@ -1347,7 +2004,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 		requestFrame(); // shows/hides the held line, even while idle
 	});
 	maxHoldClearBtn.addEventListener("click", () => {
-		maxPeaks = []; // reallocated at the next live frame, like `peaks`
+		maxPeaks = []; // reallocated at the next meter-update
 		requestFrame();
 	});
 	freezeRefBtn.addEventListener("click", () => {
@@ -1383,6 +2040,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 	await listen<Metrics>("meter-update", (event) => {
 		latest = event.payload;
+		trackMaxHold(latest.spectrum);
 		updateReadouts(latest);
 	});
 

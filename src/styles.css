@@ -15,6 +15,11 @@
   box-sizing: border-box;
 }
 
+/* `hidden` must win over the display values the layout classes set. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -77,8 +82,20 @@ body {
   color: var(--text);
 }
 
+.elapsed {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+#elapsedTime {
+  color: var(--text);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 .device-select {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   background-color: var(--panel-2);
   color: var(--text);
@@ -93,6 +110,7 @@ body {
 }
 
 .btn {
+  white-space: nowrap;
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--line);
@@ -136,6 +154,7 @@ body {
   font-variant-numeric: tabular-nums;
   min-width: 90px;
   text-align: right;
+  white-space: nowrap;
   color: var(--muted);
 }
 
@@ -160,6 +179,10 @@ body {
   border-bottom: 1px solid var(--accent-amber);
 }
 .hint[hidden] {
+  display: none;
+}
+
+body.no-suggested-gain .hint {
   display: none;
 }
 .hint-icon {
@@ -297,10 +320,17 @@ body {
 }
 
 /* ---- Config row ---- */
+/* Two groups, the capture selects and the display toggles, pushed to opposite
+   ends. When the row runs out of width the toggles drop to a second line as a
+   unit (space-between leaves a lone group at the left edge) instead of
+   stranding the last one or two; only then does a group wrap internally, and a
+   label never parts from its select. */
 .config-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 8px 16px;
   padding: 8px 16px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
@@ -312,6 +342,20 @@ body {
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.6px;
+}
+
+.cfg-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.cfg-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .cfg-select {
@@ -334,6 +378,7 @@ body {
   text-transform: none;
   letter-spacing: 0;
   font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -342,55 +387,104 @@ body {
   cursor: pointer;
 }
 
-/* ---- Readouts ---- */
-.readouts {
+/* ---- Meter heads ---- */
+/* The numeric readouts, one per bar and in the same order, sitting directly
+   above the bar they belong to. The side padding matches the meter canvas's
+   scale gutter (PLOT_PAD_LEFT / METER_PAD_RIGHT in main.ts) so each head is
+   centered over its bar. main.ts sets .wide / .tight from the column width,
+   the column count (one per bar; the True Peak head spans its per-channel
+   bars), and .lu-axis when the canvas reserves a right gutter for the LU
+   scale (METER_PAD_RIGHT_LU). */
+.meter-heads {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
-  gap: 1px;
-  background: var(--line);
-  border-bottom: 1px solid var(--line);
+  grid-template-columns: repeat(var(--meter-cols, 4), minmax(0, 1fr));
+  padding: 0 6px 6px 28px;
 }
 
-.readout {
-  background: var(--panel);
-  padding: 16px 14px;
+.meters-panel.lu-axis .meter-heads {
+  padding-right: 26px;
+}
+
+#tpCard {
+  grid-column: span var(--tp-span, 1);
+}
+
+.plots.no-bars .meter-heads {
+  padding: 0 0 6px;
+}
+
+.meter-head {
+  min-width: 0;
+  padding: 4px 2px;
+  border-radius: 6px;
   text-align: center;
 }
 
-.readout-hero {
-  background: var(--panel-2);
-}
-
-.readout .label {
+.meter-head .label {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
-.readout .value {
+.meter-head .value {
   font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
 }
 
-.readout-hero .value {
-  font-size: 44px;
-  color: var(--accent);
-}
-
-.readout .unit {
+.meter-head .unit {
   font-size: 11px;
   color: var(--muted);
 }
 
-.readout .subvalue {
-  margin-top: 4px;
+.meter-head .subvalue {
+  margin-top: 2px;
   font-size: 11px;
   color: var(--muted);
   font-family: "JetBrains Mono", ui-monospace, monospace;
+  white-space: nowrap;
+}
+
+.meters-panel.wide .meter-head .value {
+  font-size: 34px;
+}
+
+/* Too narrow for full names: abbreviate (the tooltips still explain each). */
+.meters-panel.tight .meter-head .label {
+  font-size: 10px;
+  letter-spacing: 0.3px;
+}
+
+.meters-panel.tight .meter-head .value {
+  font-size: 15px;
+}
+
+.meters-panel.tight .meter-head .unit,
+.meters-panel.tight .label-full {
+  display: none;
+}
+
+.meters-panel.tight .label-short {
+  display: inline;
+}
+
+.meters-panel.tight .meter-head .subvalue {
+  font-size: 9px;
+}
+
+/* Readouts off (Settings): a head keeps its label (and the CLIP flag) so the
+   bar stays identified, but drops its numbers. True Peak and Momentary /
+   Short-term are switched separately; Integrated + LRA always show. */
+.meters-panel.no-tp-readout #tpCard .value,
+.meters-panel.no-tp-readout #tpCard .unit,
+.meters-panel.no-tp-readout #tpCard .subvalue,
+.meters-panel.no-ms-readouts .meter-head.ms .value,
+.meters-panel.no-ms-readouts .meter-head.ms .unit {
+  display: none;
 }
 
 /* True Peak clip indicator */
@@ -407,6 +501,16 @@ body {
 
 .clip-flag.on {
   display: inline-block;
+}
+
+/* The CLIP flag shares the label's line. Outside the wide layout there is no
+   room for it beside the full name, so the name abbreviates while it shows. */
+.meters-panel:not(.wide) #tpCard.clipping .label-full {
+  display: none;
+}
+
+.meters-panel:not(.wide) #tpCard.clipping .label-short {
+  display: inline;
 }
 
 #tpCard.clipping {
@@ -427,6 +531,22 @@ body {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   font-size: 13px;
+  /* Whole controls drop to a second line when the row runs out (the EBU tag
+     adds width at any window size) rather than squeezing their labels. */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.target-row label,
+.target-row .delta {
+  white-space: nowrap;
+}
+
+/* A label, its field, and its unit wrap as one piece. */
+.target-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .target-row label {
@@ -530,6 +650,23 @@ body {
   font-size: 11px;
 }
 
+/* The target is pinned (and its control locked) on an EBU loudness scale. */
+.num-field.locked {
+  opacity: 0.6;
+}
+
+.ebu-tag:not([hidden]) {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(110, 168, 254, 0.5);
+  color: rgb(110, 168, 254);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
 .spacer {
   flex: 1;
 }
@@ -560,21 +697,14 @@ body {
 }
 
 /* ---- Spectrum controls ---- */
+/* Live inside the spectrum panel, so they appear and disappear with it. */
 .spectrum-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 6px 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  gap: 6px 10px;
+  padding-bottom: 8px;
   font-size: 12px;
-}
-
-.spectrum-controls .row-label {
-  color: var(--muted);
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.6px;
 }
 
 .spectrum-controls .guide-pick {
@@ -585,7 +715,7 @@ body {
   cursor: pointer;
 }
 
-/* Slimmer than the config row's selects so it fits the 12px controls strip;
+/* Slimmer than the settings selects so it fits the 12px controls strip;
    keeps .cfg-select's appearance:none + custom caret (needed on Linux/GTK). */
 .spectrum-controls .cfg-select {
   padding: 3px 24px 3px 8px;
@@ -599,18 +729,230 @@ body {
   border-color: var(--line);
 }
 
-/* ---- Spectrum ---- */
-.spectrum-wrap {
+/* ---- Plots (bar meters + spectrum) ---- */
+/* The meters panel (readouts over their bars) is the main view; the spectrum
+   panel sits beside it when enabled. With the bars switched off the readouts
+   become a row across the top and the spectrum takes the rest. Each canvas is
+   absolutely positioned in its wrapper so its size always follows the flex
+   layout rather than its own backing-store dimensions. */
+.plots {
   flex: 1;
   min-height: 0;
+  display: flex;
+  gap: 12px;
   padding: 12px 16px 16px;
 }
 
+.plots.no-bars {
+  flex-direction: column;
+}
+
+.meters-panel,
+.spectrum-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.meters-panel {
+  flex: 1 1 0;
+}
+
+.spectrum-panel {
+  flex: 1.3 1 0;
+}
+
+.plots.no-bars .meters-panel {
+  flex: none;
+}
+
+.plots.no-bars .spectrum-panel {
+  flex: 1 1 0;
+}
+
+.meters-wrap,
+.spectrum-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+#meters,
 #spectrum {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   display: block;
+}
+
+#spectrum {
   cursor: crosshair;
+}
+
+.label-short {
+  display: none;
+}
+
+/* ---- Shortcut hints ---- */
+/* A quiet strip along the bottom listing the most useful keyboard shortcuts.
+   Dropped in compact view, where every pixel goes to the meters. */
+.shortcut-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 6px 16px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.shortcut-title {
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.shortcut {
+  white-space: nowrap;
+}
+
+.shortcut kbd {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 4px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* ---- Compact view ---- */
+/* Strips the window down to the transport, the input picker, and the plots, so
+   several meter windows can be tiled side by side on one display. Error and
+   update banners stay visible. */
+body.compact .brand span,
+body.compact #settingsToggle,
+body.compact .config-row,
+body.compact .target-row,
+body.compact .spectrum-controls,
+body.compact .hint,
+body.compact .shortcut-bar,
+body.compact .toolbar .label-full {
+  display: none;
+}
+
+body.compact .toolbar .label-short {
+  display: inline;
+}
+
+body.compact .toolbar {
+  padding: 8px 10px 6px;
+  gap: 4px 8px;
+  flex-wrap: wrap;
+}
+
+/* Two rows that both fit the minimum window width: the transport on top (the
+   logo pushes it to the right), then the input picker and status underneath.
+   The zero-height ::after is the forced line break between them. */
+body.compact .brand {
+  margin-right: auto;
+}
+
+body.compact .toolbar::after {
+  content: "";
+  order: 9;
+  flex-basis: 100%;
+  height: 0;
+}
+
+body.compact .device-select {
+  order: 10;
+  flex: 1 1 0;
+  padding: 3px 24px 3px 8px;
+  font-size: 11px;
+  background-position: right 8px center;
+}
+
+body.compact .status {
+  order: 11;
+  flex: 0 0 auto;
+  min-width: 0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+body.compact .toolbar .btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+body.compact .plots {
+  padding: 8px 10px 10px;
+}
+
+/* ---- Narrow window ---- */
+/* The toolbar no longer fits one line below ~900px, so it splits into two
+   deliberate rows instead of wrapping wherever it runs out: the transport and
+   status on top, then the input picker with Settings and Compact beside it.
+   The zero-height ::after is the forced line break between them. */
+@media (max-width: 899px) {
+  .toolbar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .toolbar::after {
+    content: "";
+    order: 9;
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .device-select {
+    order: 10;
+  }
+
+  body:not(.compact) #settingsToggle {
+    order: 11;
+  }
+
+  body:not(.compact) #compactToggle {
+    order: 12;
+  }
+
+  .status {
+    min-width: 0;
+    margin-left: auto;
+  }
+}
+
+/* Below the old 720px minimum the target row wraps too and the plots stack. */
+@media (max-width: 719px) {
+  .brand span,
+  .toolbar .label-full {
+    display: none;
+  }
+
+  .toolbar .label-short {
+    display: inline;
+  }
+
+  .plots {
+    flex-direction: column;
+    padding: 8px 10px 10px;
+    gap: 8px;
+  }
 }
 
 /* ---- About modal ---- */

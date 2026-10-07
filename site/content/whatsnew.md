@@ -16,6 +16,18 @@
 
 # What's new
 
+## 0.7.0 2026-10-07
+
+A new look built around loudness bar meters. True Peak, Momentary, Short-term, and Integrated each get a vertical bar under their number, so you can read your level at a glance while you play.
+
+- True Peak shows separate left and right bars when you meter a stereo pair.
+- Markers on the bars hold the most recent peak for a moment before falling back, and the numbers above them hold too, so they are easy to read.
+- New loudness scales in Settings, including the EBU +9 and EBU +18 scales used in broadcast and live sound, which set the target to -23 LUFS for you. Bars turn green, yellow, and red around the target.
+- A compact view (press C) shrinks MeterMaid down to just the meters, so it fits beside your DAW or other apps.
+- A new Settings panel gathers the options in one place. You can hide the numbers you do not need, or the suggested gain.
+- The spectrum analyzer is now optional. Turn it on in Settings if you want it.
+- The default leveling target is now -23 LUFS. If you already set your own target, it is kept.
+
 ## 0.6.1 2026-10-05
 
 Another round of under-the-hood housekeeping. This release refreshes the components MeterMaid is built on, including a couple of security fixes, so the app stays current and dependable on macOS, Windows, and Linux. Nothing changes in how MeterMaid looks or works.
