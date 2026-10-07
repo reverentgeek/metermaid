@@ -147,6 +147,7 @@ let showSpectrum = false;
 // Off leaves only Integrated + LRA above the bars. Persisted.
 let showTpReadout = true;
 let showMsReadouts = true;
+let showSuggestedGain = true; // the "Suggested gain" figure in the target row
 let meterScale: MeterScale = "full"; // persisted
 // Compact view: only the transport, a slim readout row, and the plots — sized
 // for tiling several meter windows on one display. Persisted.
@@ -206,6 +207,7 @@ const showMetersInput = $<HTMLInputElement>("showMeters");
 const showSpectrumInput = $<HTMLInputElement>("showSpectrum");
 const showTpReadoutInput = $<HTMLInputElement>("showTpReadout");
 const showMsReadoutsInput = $<HTMLInputElement>("showMsReadouts");
+const showSuggestedGainInput = $<HTMLInputElement>("showSuggestedGain");
 const ebuTag = $<HTMLSpanElement>("ebuTag");
 const meterScaleSelect = $<HTMLSelectElement>("meterScale");
 const plots = $<HTMLElement>("plots");
@@ -285,6 +287,7 @@ async function persist() {
 		await store.set("showSpectrum", showSpectrum);
 		await store.set("showTpReadout", showTpReadout);
 		await store.set("showMsReadouts", showMsReadouts);
+		await store.set("showSuggestedGain", showSuggestedGain);
 		await store.set("meterScale", meterScale);
 		await store.set("compact", compact);
 		await store.save();
@@ -968,6 +971,9 @@ function applyView() {
 	plots.classList.toggle("no-bars", !showMeters);
 	metersPanel.classList.toggle("no-tp-readout", !showTpReadout);
 	metersPanel.classList.toggle("no-ms-readouts", !showMsReadouts);
+	deltaEl.hidden = !showSuggestedGain;
+	// The Reset hint is about settling the suggested gain; it goes with it.
+	document.body.classList.toggle("no-suggested-gain", !showSuggestedGain);
 	document.body.classList.toggle("compact", compact);
 	compactToggle.textContent = compact ? "Expand" : "Compact";
 	compactToggle.setAttribute("aria-pressed", String(compact));
@@ -1752,6 +1758,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 		const cp = await store.get<boolean>("compact");
 		const tr = await store.get<boolean>("showTpReadout");
 		const mr = await store.get<boolean>("showMsReadouts");
+		const sg = await store.get<boolean>("showSuggestedGain");
 		// Beta 2 had one combined toggle and target-dependent "9" / "18" scales.
 		const lr = await store.get<boolean>("showLiveReadouts");
 		const ms = await store.get<string>("meterScale");
@@ -1778,6 +1785,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 		showMsReadouts = (mr ?? lr) !== false;
 		showTpReadoutInput.checked = showTpReadout;
 		showMsReadoutsInput.checked = showMsReadouts;
+		showSuggestedGain = sg !== false;
+		showSuggestedGainInput.checked = showSuggestedGain;
 		if (isMeterScale(ms)) meterScale = ms;
 		else if (ms === "9" || ms === "18")
 			meterScale = `${tgt === EBU_TARGET_LUFS ? "ebu" : "lu"}${ms}`;
@@ -1955,6 +1964,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 	});
 	showMsReadoutsInput.addEventListener("change", () => {
 		showMsReadouts = showMsReadoutsInput.checked;
+		applyView();
+		void persist();
+	});
+	showSuggestedGainInput.addEventListener("change", () => {
+		showSuggestedGain = showSuggestedGainInput.checked;
 		applyView();
 		void persist();
 	});

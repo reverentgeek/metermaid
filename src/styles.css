@@ -181,6 +181,10 @@ body {
 .hint[hidden] {
   display: none;
 }
+
+body.no-suggested-gain .hint {
+  display: none;
+}
 .hint-icon {
   color: var(--accent-amber);
   font-size: 15px;
