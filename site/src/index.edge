@@ -3,8 +3,8 @@ layout: base
 title: MeterMaid, a real-time LUFS loudness meter for macOS, Windows & Linux
 description: >-
   MeterMaid is a free, open-source desktop loudness meter. Measure LUFS to the
-  EBU R128 / ITU-R BS.1770 standard, watch a live frequency spectrum, and level
-  guitar amp and effect patches at matched loudness.
+  EBU R128 / ITU-R BS.1770 standard on vertical bar meters, and level guitar amp
+  and effect patches at matched loudness.
 ---
 
 {{-- ═══ HERO ═══ --}}
@@ -92,9 +92,8 @@ description: >-
 		</h1>
 
 		<p class="max-w-2xl mx-auto text-ink-200 text-lg sm:text-xl leading-relaxed mb-10 animate-fade-up delay-300">
-			MeterMaid is a desktop <strong class="text-ink-100 font-600">LUFS loudness meter</strong> with a live
-			frequency
-			spectrum. Measure to the EBU R128 / ITU-R BS.1770 standard and level your guitar amp and effect patches at
+			MeterMaid is a desktop <strong class="text-ink-100 font-600">LUFS loudness meter</strong> with vertical
+			bar meters and an optional live frequency spectrum. Measure to the EBU R128 / ITU-R BS.1770 standard and level your guitar amp and effect patches at
 			matched loudness, so you compare tone, not volume.
 		</p>
 
@@ -125,10 +124,31 @@ description: >-
 	<div class="relative z-10 max-w-5xl mx-auto px-6">
 		<figure
 			class="rounded-xl border border-ink-700 bg-ink-900 shadow-2xl shadow-black/50 overflow-hidden animate-fade-up">
-			<img src="/images/screenshot.png" width="1880" height="1406"
-				alt="The MeterMaid app metering a stereo input: integrated, short-term, momentary, loudness-range, and true-peak readouts in LUFS above a green-to-red log-frequency spectrum analyzer."
+			<img src="/images/screenshot.png" width="2174" height="1368"
+				alt="The MeterMaid app metering a stereo input: vertical bar meters for left and right true peak, momentary, short-term, and integrated loudness, each under its number, with a leveling target line at -23 LUFS and a clip ceiling line at -1 dBTP."
 				class="w-full h-auto block">
 		</figure>
+
+		<div class="grid gap-6 mt-6 md:grid-cols-[2174fr_1192fr]">
+			<figure>
+				<div class="rounded-xl border border-ink-700 bg-ink-900 shadow-xl shadow-black/40 overflow-hidden">
+					<img src="/images/screenshot-spectrum.png" width="2174" height="1368" loading="lazy"
+						alt="MeterMaid with the Settings panel open and the spectrum analyzer switched on: the bar meters on the left, and a green-to-amber log-frequency spectrum with a pink noise guide curve on the right."
+						class="w-full h-auto block">
+				</div>
+				<figcaption class="text-ink-300 text-sm leading-relaxed mt-3">Switch on the spectrum analyzer and
+					choose what to show in Settings.</figcaption>
+			</figure>
+			<figure class="max-w-sm mx-auto md:max-w-none">
+				<div class="rounded-xl border border-ink-700 bg-ink-900 shadow-xl shadow-black/40 overflow-hidden">
+					<img src="/images/screenshot-compact.png" width="1192" height="1368" loading="lazy"
+						alt="MeterMaid in compact view: a narrow window with only the transport buttons, the input picker, and the bar meters with their numbers."
+						class="w-full h-auto block">
+				</div>
+				<figcaption class="text-ink-300 text-sm leading-relaxed mt-3">Compact view fits beside your DAW.
+				</figcaption>
+			</figure>
+		</div>
 	</div>
 </section>
 
@@ -163,6 +183,33 @@ description: >-
 
 			<div class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
 				<div class="w-11 h-11 flex items-center justify-center rounded-lg bg-ink-800 mb-5" aria-hidden="true">
+					<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#54e08a"
+						stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+						<rect x="4" y="9" width="4" height="11" rx="1" />
+						<rect x="10" y="4" width="4" height="16" rx="1" />
+						<rect x="16" y="12" width="4" height="8" rx="1" />
+						<line x1="9" y1="2" x2="15" y2="2" />
+					</svg>
+				</div>
+				<h3 class="font-display text-xl font-600 text-ink-100 mb-2">Loudness bar meters</h3>
+				<p class="text-ink-300 text-sm leading-relaxed">Vertical bars for True Peak, Momentary, Short-term, and Integrated, with markers that hold the recent peak so you can read your level at a glance. A stereo input gets left and right true-peak bars.</p>
+			</div>
+
+			<div class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
+				<div class="w-11 h-11 flex items-center justify-center rounded-lg bg-ink-800 mb-5" aria-hidden="true">
+					<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f2c14e"
+						stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+						<line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="3 3" />
+						<rect x="6" y="7" width="4" height="13" rx="1" />
+						<rect x="14" y="10" width="4" height="10" rx="1" />
+					</svg>
+				</div>
+				<h3 class="font-display text-xl font-600 text-ink-100 mb-2">EBU loudness scales</h3>
+				<p class="text-ink-300 text-sm leading-relaxed">Switch the bars to the EBU +9 or EBU +18 scale, centered on a -23 LUFS target, or use the same ranges around a target of your own. Bars turn green, yellow, and red as you approach and pass it.</p>
+			</div>
+
+			<div class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
+				<div class="w-11 h-11 flex items-center justify-center rounded-lg bg-ink-800 mb-5" aria-hidden="true">
 					<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f2c14e"
 						stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
 						<line x1="4" y1="20" x2="4" y2="13" />
@@ -172,7 +219,7 @@ description: >-
 					</svg>
 				</div>
 				<h3 class="font-display text-xl font-600 text-ink-100 mb-2">Live spectrum analyzer</h3>
-				<p class="text-ink-300 text-sm leading-relaxed">A log-frequency FFT spectrum with peak-hold, max-hold,
+				<p class="text-ink-300 text-sm leading-relaxed">Switch on a log-frequency FFT spectrum with peak-hold, max-hold,
 					and pink/brown noise guide curves calibrated to your target loudness. Freeze any curve as a
 					reference and point anywhere to read the exact frequency and level.</p>
 			</div>
@@ -186,9 +233,9 @@ description: >-
 						<circle cx="12" cy="12" r="1.5" fill="#54e08a" stroke="none" />
 					</svg>
 				</div>
-				<h3 class="font-display text-xl font-600 text-ink-100 mb-2">Target &amp; Apply helper</h3>
-				<p class="text-ink-300 text-sm leading-relaxed">Set a target LUFS and MeterMaid shows the exact gain to
-					apply to hit it. It's the fastest way to match two patches.</p>
+				<h3 class="font-display text-xl font-600 text-ink-100 mb-2">Leveling target &amp; suggested gain</h3>
+				<p class="text-ink-300 text-sm leading-relaxed">Set a leveling target in LUFS and MeterMaid shows the
+					suggested gain to hit it. It's the fastest way to match two patches.</p>
 			</div>
 
 			<div class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
@@ -200,8 +247,8 @@ description: >-
 					</svg>
 				</div>
 				<h3 class="font-display text-xl font-600 text-ink-100 mb-2">True Peak &amp; clip ceiling</h3>
-				<p class="text-ink-300 text-sm leading-relaxed">True-peak readout in dBTP with a configurable ceiling,
-					so you can keep levels honest without clipping.</p>
+				<p class="text-ink-300 text-sm leading-relaxed">True-peak readout in dBTP for each channel, with a
+					configurable clip ceiling, so you can keep levels honest without clipping.</p>
 			</div>
 
 			<div class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
@@ -229,6 +276,20 @@ description: >-
 				<h3 class="font-display text-xl font-600 text-ink-100 mb-2">Free, open &amp; self-updating</h3>
 				<p class="text-ink-300 text-sm leading-relaxed">MIT-licensed and free. It remembers your device and
 					settings between launches and updates itself in place when a new release ships.</p>
+			</div>
+
+			<div class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
+				<div class="w-11 h-11 flex items-center justify-center rounded-lg bg-ink-800 mb-5" aria-hidden="true">
+					<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#54e08a"
+						stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+						<polyline points="9 3 9 9 3 9" />
+						<polyline points="15 21 15 15 21 15" />
+						<line x1="9" y1="9" x2="3" y2="3" />
+						<line x1="15" y1="15" x2="21" y2="21" />
+					</svg>
+				</div>
+				<h3 class="font-display text-xl font-600 text-ink-100 mb-2">Compact view</h3>
+				<p class="text-ink-300 text-sm leading-relaxed">Press C to shrink MeterMaid down to just the meters, so it sits beside your DAW or tiles across a display.</p>
 			</div>
 
 		</div>
@@ -367,15 +428,15 @@ description: >-
 					class="flex items-center justify-center w-10 h-10 rounded-lg bg-ink-800 font-display text-xl font-700 text-green-400 mb-5">3</span>
 				<h3 class="font-display text-lg font-600 text-ink-100 mb-2">Press Start</h3>
 				<p class="text-ink-300 text-sm leading-relaxed">Click Start and allow microphone access when asked. The
-					readouts and the live spectrum come alive right away.</p>
+					readouts and the bar meters come alive right away.</p>
 			</li>
 			<li class="feature-card bg-ink-850 border border-ink-700 p-7 rounded-lg">
 				<span
 					class="flex items-center justify-center w-10 h-10 rounded-lg bg-ink-800 font-display text-xl font-700 text-green-400 mb-5">4</span>
 				<h3 class="font-display text-lg font-600 text-ink-100 mb-2">Match your loudness</h3>
-				<p class="text-ink-300 text-sm leading-relaxed">Set a Target, play a few seconds, and read the Apply
-					value. To level a patch, make a change, click Reset or press <strong>Space</strong>, and play again until Apply
-					settles.</p>
+				<p class="text-ink-300 text-sm leading-relaxed">Set a leveling target, play a few seconds, and read the
+					Suggested gain. To level a patch, make a change, click Reset or press <strong>Space</strong>, and play again until
+					Suggested gain settles.</p>
 			</li>
 		</ol>
 	</div>
@@ -402,6 +463,10 @@ description: >-
 			<div class="grid gap-2 sm:grid-cols-2 border-t border-ink-700 py-4">
 				<dt class="font-mono text-ink-100"><kbd>M</kbd></dt>
 				<dd class="text-ink-300 text-sm leading-relaxed">Toggle spectrum Max Hold.</dd>
+			</div>
+			<div class="grid gap-2 sm:grid-cols-2 border-t border-ink-700 py-4">
+				<dt class="font-mono text-ink-100"><kbd>C</kbd></dt>
+				<dd class="text-ink-300 text-sm leading-relaxed">Toggle compact view.</dd>
 			</div>
 		</dl>
 		<p class="text-ink-300 text-sm leading-relaxed mt-4">S and M work any time you are not typing in a field, so they stay live right after you pick a device. Close the About window first. No modifier keys, and holding the letter down does not repeat the action.</p>
