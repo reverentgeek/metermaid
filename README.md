@@ -2,7 +2,7 @@
 
 A cross-platform desktop **LUFS / loudness meter** built with [Tauri](https://tauri.app) (Rust audio engine + web UI). It measures loudness according to the **ITU-R BS.1770 / EBU R128** standard and displays a real-time frequency spectrum, handy for normalizing the levels of guitar amp/effects patches (e.g., Line 6 Helix Stadium XL, Neural DSP Quad Cortex, Fractal Axe-FX) or any audio source.
 
-![MeterMaid metering a stereo input: loudness readouts, true-peak, target/apply helper, and a log-frequency spectrum analyzer](docs/screenshot.png)
+![MeterMaid metering a stereo input: bar meters for true peak, momentary, short-term, and integrated loudness under their readouts, with the leveling target and clip ceiling drawn as lines](docs/screenshot.png)
 
 > **Why level patches?** A louder patch almost always *sounds* better, even when it isn't, so honest tone comparisons need matched loudness. The companion blog post, [Level Guitar Patches with MeterMaid](https://reverentgeek.com/leveling-guitar-patches-with-tauri/), explains the problem and walks through a full leveling session with the app.
 

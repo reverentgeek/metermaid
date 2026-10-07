@@ -124,10 +124,31 @@ description: >-
 	<div class="relative z-10 max-w-5xl mx-auto px-6">
 		<figure
 			class="rounded-xl border border-ink-700 bg-ink-900 shadow-2xl shadow-black/50 overflow-hidden animate-fade-up">
-			<img src="/images/screenshot.png" width="1880" height="1406"
-				alt="The MeterMaid app metering a stereo input: integrated, short-term, momentary, loudness-range, and true-peak readouts in LUFS above a green-to-red log-frequency spectrum analyzer."
+			<img src="/images/screenshot.png" width="2174" height="1368"
+				alt="The MeterMaid app metering a stereo input: vertical bar meters for left and right true peak, momentary, short-term, and integrated loudness, each under its number, with a leveling target line at -23 LUFS and a clip ceiling line at -1 dBTP."
 				class="w-full h-auto block">
 		</figure>
+
+		<div class="grid gap-6 mt-6 md:grid-cols-[2174fr_1192fr]">
+			<figure>
+				<div class="rounded-xl border border-ink-700 bg-ink-900 shadow-xl shadow-black/40 overflow-hidden">
+					<img src="/images/screenshot-spectrum.png" width="2174" height="1368" loading="lazy"
+						alt="MeterMaid with the Settings panel open and the spectrum analyzer switched on: the bar meters on the left, and a green-to-amber log-frequency spectrum with a pink noise guide curve on the right."
+						class="w-full h-auto block">
+				</div>
+				<figcaption class="text-ink-300 text-sm leading-relaxed mt-3">Switch on the spectrum analyzer and
+					choose what to show in Settings.</figcaption>
+			</figure>
+			<figure class="max-w-sm mx-auto md:max-w-none">
+				<div class="rounded-xl border border-ink-700 bg-ink-900 shadow-xl shadow-black/40 overflow-hidden">
+					<img src="/images/screenshot-compact.png" width="1192" height="1368" loading="lazy"
+						alt="MeterMaid in compact view: a narrow window with only the transport buttons, the input picker, and the bar meters with their numbers."
+						class="w-full h-auto block">
+				</div>
+				<figcaption class="text-ink-300 text-sm leading-relaxed mt-3">Compact view fits beside your DAW.
+				</figcaption>
+			</figure>
+		</div>
 	</div>
 </section>
 
