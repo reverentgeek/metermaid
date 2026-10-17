@@ -1,0 +1,18 @@
+[package]
+name = "metermaid-dsp"
+version = "0.1.0"
+description = "ITU-R BS.1770 loudness, spectrum and test-signal analysis shared by MeterMaid and its sibling tools"
+authors = ["David Neal <david@reverentgeek.com>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/reverentgeek/metermaid"
+
+[features]
+# `Serialize` for the result types (camelCase, matching MeterMaid's TS
+# interfaces). Off by default so non-UI consumers don't pull in serde.
+serde = ["dep:serde"]
+
+[dependencies]
+ebur128 = "0.1"
+rustfft = "6"
+serde = { version = "1", features = ["derive"], optional = true }

@@ -44,7 +44,7 @@ cargo test
 ```
 
 - Run `pnpm format` to fix TypeScript formatting and `cargo fmt` to fix Rust formatting.
-- New audio/analysis behavior should come with tests. See the golden-signal suite in `src-tauri/src/audio.rs` (`#[cfg(test)] mod tests`) for the pattern — you can drive the `Analyzer` directly with synthesized frames, no audio device required. If you have `ffmpeg` installed, the ignored cross-check is handy: `cargo test ebur128_matches_ffmpeg -- --ignored --nocapture`.
+- New audio/analysis behavior should come with tests. See the golden-signal suites in `src-tauri/crates/metermaid-dsp` (each module's `#[cfg(test)] mod tests`) for the pattern — you can drive the `Analyzer` directly with synthesized frames, no audio device required. If you have `ffmpeg` installed, the ignored cross-check is handy: `cargo test ebur128_matches_ffmpeg -- --ignored --nocapture`.
 
 ## Guidelines
 

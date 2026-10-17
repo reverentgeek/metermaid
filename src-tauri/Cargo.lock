@@ -2288,11 +2288,10 @@ version = "0.7.0"
 dependencies = [
  "block2",
  "cpal",
- "ebur128",
+ "metermaid-dsp",
  "objc2",
  "objc2-av-foundation",
  "ringbuf",
- "rustfft",
  "serde",
  "serde_json",
  "tauri",
@@ -2302,6 +2301,15 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+]
+
+[[package]]
+name = "metermaid-dsp"
+version = "0.1.0"
+dependencies = [
+ "ebur128",
+ "rustfft",
+ "serde",
 ]
 
 [[package]]
