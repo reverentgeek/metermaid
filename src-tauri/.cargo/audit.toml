@@ -37,4 +37,16 @@ ignore = [
     # release allows quick-xml >= 0.41.
     "RUSTSEC-2026-0194", # quick-xml
     "RUSTSEC-2026-0195", # quick-xml
+    # zip < 9 extraction flaws (SUID/SGID bits kept, symlinks escaping the
+    # destination, permissions applied through symlinks) on *untrusted*
+    # archives. Only reachable through tauri-plugin-updater's Windows zip
+    # updates, and unreachable here: the updater rejects any download whose
+    # minisign signature doesn't match our pubkey before extracting, and with
+    # `createUpdaterArtifacts: true` (not "v1Compatible") Windows updates ship
+    # as signed .exe/.msi installers, never zips. tauri-plugin-updater 2.14.0
+    # (latest) and 3.0.0-alpha.3 still pin zip ^4, so no dependency bump can
+    # pick up the fix. Remove all three when the updater allows zip >= 9.
+    "RUSTSEC-2026-0367", # zip
+    "RUSTSEC-2026-0368", # zip
+    "RUSTSEC-2026-0369", # zip
 ]
