@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.7.0",
   "type": "module",
-  "packageManager": "pnpm@12.10.1+sha512.ba40a37eb1a370d60fea8c4cf1d364c13bcccef518e98ad2bcee954f539d38da37458e58261a3fa55e06523450ea0ffff9f497b135be41f2c15c1642bacace6c",
+  "packageManager": "pnpm@12.14.0+sha512.c18ba6d87993d3d164cb5e8948f32b2c06ee854487e06cd8d86781342fb3e5bb4634367034711e86802baa9c37bea906ce1929ad08d70884c97d801df13389a6",
   "description": "MeterMaid — a cross-platform LUFS / loudness meter built with Tauri",
   "author": "David Neal <david@reverentgeek.com>",
   "license": "MIT",
@@ -25,19 +25,19 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.1",
-    "@tauri-apps/plugin-opener": "^2.7.0",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-opener": "^2.7.2",
     "@tauri-apps/plugin-process": "^2.4.0",
     "@tauri-apps/plugin-store": "^2.5.0",
-    "@tauri-apps/plugin-updater": "^2.13.1"
+    "@tauri-apps/plugin-updater": "^2.14.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
-    "@tauri-apps/cli": "^2.12.1",
+    "@tauri-apps/cli": "^2.12.3",
     "markdownlint-cli2": "^0.23.3",
     "typescript": "~7.0.2",
-    "vite": "^8.3.3"
+    "vite": "^8.3.4"
   }
 }
