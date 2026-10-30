@@ -43,7 +43,7 @@ serde_json = "1"
 # `windows-core = "0.61"` pin. Don't relax this below 0.18.2.
 cpal = "0.18.2"
 metermaid-dsp = { path = "crates/metermaid-dsp", features = ["serde"] }
-ringbuf = "0.5"
+ringbuf = "0.6"
 
 # The self-updater is desktop-only (no mobile target).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
