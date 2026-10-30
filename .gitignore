@@ -25,3 +25,6 @@ dist-ssr
 
 # pnpm content-addressable store (local cache)
 .pnpm-store/
+
+# Local research notes, not for committing
+/docs/research/
