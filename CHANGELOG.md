@@ -4,6 +4,17 @@ All notable changes to MeterMaid are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-10-30
+
+### Internal
+
+- Refreshed the Rust dependency tree (`cargo update`) and raised ringbuf 0.5 → 0.6. This clears RUSTSEC-2026-0382 (`rustls-webpki` 0.103.15 → 0.103.16, certificate verification could accept distrusted intermediates) and RUSTSEC-2026-0383 (`webpki-root-certs` 1.0.9 → 1.0.11, bundled roots trusted distrusted emSign intermediates), both on the self-updater's download path. ringbuf 0.6 needed no code changes in `audio.rs`. Also moves tauri 2.12.4 → 2.12.5, tauri-build 2.7.3 → 2.7.4, tauri-plugin-updater 2.14.0 → 2.14.1, wry 0.57.0 → 0.57.1, tao 0.37.1 → 0.37.2, tokio 1.53.3 → 1.54.1, ebur128 0.1.10 → 0.1.11, plist 1.10.1 → 1.10.3, and zip 4.6.1 → 9.1.3. `cargo audit` is clean.
+- Removed the `quick-xml` and `zip` ignores from `src-tauri/.cargo/audit.toml`: both crates are now past the fixed versions. The new `zvariant`, `zvariant_derive`, and `zbus_names` "unmaintained" notices (RUSTSEC-2026-0370 to 0372) remain as warnings.
+- Refreshed the frontend dependencies to match: @tauri-apps/cli 2.12.3 → 2.12.4, @tauri-apps/plugin-updater 2.14.0 → 2.14.1, Vite 8.3.4 → 8.3.5, Biome 2.5.15 → 2.6.4, and markdownlint-cli2 0.23.3 → 0.24.0.
+- Refreshed the website dependencies: Eleventy 3.1.6 → 3.1.7, Playwright 1.63.0 → 1.64.1, eleventy-plugin-edgejs 1.1.28 → 1.1.29, and markdown-it 15.0.2 → 15.0.3, plus a lockfile refresh.
+- Bumped the pinned pnpm release to 12.16.1 for the app and the site (`packageManager` + lockfiles).
+- Moved the analysis code into a shared `metermaid-dsp` crate so sibling tools can reuse it. It is versioned separately from the app.
+
 ## [0.7.0] - 2026-10-07
 
 ### Added
