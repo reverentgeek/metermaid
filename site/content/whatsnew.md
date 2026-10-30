@@ -16,6 +16,10 @@
 
 # What's new
 
+## 0.7.1 2026-10-30
+
+Under-the-hood housekeeping. This release refreshes the components MeterMaid is built on, including a couple of security fixes, so the app stays current and dependable on macOS, Windows, and Linux. Nothing changes in how MeterMaid looks or works.
+
 ## 0.7.0 2026-10-07
 
 A new look built around loudness bar meters. True Peak, Momentary, Short-term, and Integrated each get a vertical bar under their number, so you can read your level at a glance while you play.
