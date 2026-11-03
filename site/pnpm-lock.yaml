@@ -176,8 +176,8 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3
       eleventy-plugin-edgejs:
-        specifier: ^1.1.30
-        version: 1.1.30(@11ty/eleventy@3.1.7)
+        specifier: ^1.1.31
+        version: 1.1.31(@11ty/eleventy@3.1.7)
       markdown-it:
         specifier: ^15.0.3
         version: 15.0.3
@@ -604,8 +604,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  eleventy-plugin-edgejs@1.1.30:
-    resolution: {integrity: sha512-46P/S1Jp/qrREQ0De1fI4f9ztTrVcN8utcF/MNo+qastHfXejlTsrx5sSTPyGY/kPPPsUzFAVszAYGxqhgznSA==}
+  eleventy-plugin-edgejs@1.1.31:
+    resolution: {integrity: sha512-xjXI4DBUv63PRW1Bhoimn2KFqnv12PR1t6xGgeUdXYwCojaZoBDJTUVNAxR3hSboRkQGL18gK3VN8LPpiLXg5w==}
     engines: {node: '>=22.0.0'}
     peerDependencies:
       '@11ty/eleventy': ^3.0.0 || ^4.0.0
@@ -1013,8 +1013,8 @@ packages:
   semver-compare@1.0.0:
     resolution: {integrity: sha512-YM3/ITh2MJ5MtzaM429anh+x2jiLVjqILF4m4oyQB18W7Ggea7BfqdH/wGMK7dDiMghv/6WG7znWMwUDzJiXow==}
 
-  semver@7.8.5:
-    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
+  semver@7.8.6:
+    resolution: {integrity: sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -1085,8 +1085,8 @@ packages:
   urlpattern-polyfill@10.1.0:
     resolution: {integrity: sha512-IGjKp/o0NL3Bso1PymYURCJxMPNAf/ILOpendP9f5B6e1rTJgdgiOvgfoT8VxCAdY+Wisb9uhGaJJf3yZ2V9nw==}
 
-  ws@8.22.0:
-    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
+  ws@8.22.1:
+    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -1128,7 +1128,7 @@ snapshots:
       send: 1.2.1
       ssri: 11.0.0
       urlpattern-polyfill: 10.1.0
-      ws: 8.22.0
+      ws: 8.22.1
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -1177,7 +1177,7 @@ snapshots:
       please-upgrade-node: 3.2.0
       posthtml: 0.16.7
       posthtml-match-helper: 2.0.3(posthtml@0.16.7)
-      semver: 7.8.5
+      semver: 7.8.6
       slugify: 1.6.9
       tinyglobby: 0.2.17
     transitivePeerDependencies:
@@ -1520,7 +1520,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  eleventy-plugin-edgejs@1.1.30(@11ty/eleventy@3.1.7):
+  eleventy-plugin-edgejs@1.1.31(@11ty/eleventy@3.1.7):
     dependencies:
       '@11ty/eleventy': 3.1.7
       edge.js: 6.5.1
@@ -1840,7 +1840,7 @@ snapshots:
 
   semver-compare@1.0.0: {}
 
-  semver@7.8.5: {}
+  semver@7.8.6: {}
 
   send@1.2.1:
     dependencies:
@@ -1901,4 +1901,4 @@ snapshots:
 
   urlpattern-polyfill@10.1.0: {}
 
-  ws@8.22.0: {}
+  ws@8.22.1: {}
