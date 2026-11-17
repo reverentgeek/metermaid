@@ -25,17 +25,17 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-opener": "^2.7.3",
     "@tauri-apps/plugin-process": "^2.4.0",
     "@tauri-apps/plugin-store": "^2.5.1",
     "@tauri-apps/plugin-updater": "^2.14.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.7",
+    "@biomejs/biome": "^2.6.8",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
-    "@tauri-apps/cli": "^2.12.4",
+    "@tauri-apps/cli": "^2.12.5",
     "markdownlint-cli2": "^0.24.1",
     "typescript": "~7.0.2",
     "vite": "^8.3.8"

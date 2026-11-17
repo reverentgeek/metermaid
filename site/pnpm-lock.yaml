@@ -185,8 +185,8 @@ importers:
         specifier: ^4.3.5
         version: 4.3.5
       eleventy-plugin-edgejs:
-        specifier: ^1.1.32
-        version: 1.1.32(@11ty/eleventy@3.1.8)
+        specifier: ^1.1.34
+        version: 1.1.34(@11ty/eleventy@3.1.8)
       markdown-it:
         specifier: ^15.0.3
         version: 15.0.3
@@ -588,8 +588,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  eleventy-plugin-edgejs@1.1.32:
-    resolution: {integrity: sha512-Iue52vILbVvSOmRZlHH4RlwqWvutJRRs8H5cUUsIFXFeTIwZdMp+/npuB7GCBHgCZMkm+l90fLYkOzoWH8xWvA==}
+  eleventy-plugin-edgejs@1.1.34:
+    resolution: {integrity: sha512-NAaHagpAGTzHvD/5a7/WO374SBZnKS0XVRJMF4DnMutwXr+h/dR31aM5IO5p1anPM4qXRFJC5CMra7O+OqVd4A==}
     engines: {node: '>=22.0.0'}
     peerDependencies:
       '@11ty/eleventy': ^3.0.0 || ^4.0.0
@@ -1474,7 +1474,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  eleventy-plugin-edgejs@1.1.32(@11ty/eleventy@3.1.8):
+  eleventy-plugin-edgejs@1.1.34(@11ty/eleventy@3.1.8):
     dependencies:
       '@11ty/eleventy': 3.1.8
       edge.js: 6.5.1
