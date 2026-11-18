@@ -2371,11 +2371,10 @@ name = "metermaid"
 version = "0.7.1"
 dependencies = [
  "block2",
- "cpal",
+ "metermaid-capture",
  "metermaid-dsp",
  "objc2",
  "objc2-av-foundation",
- "ringbuf",
  "serde",
  "serde_json",
  "tauri",
@@ -2385,6 +2384,15 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+]
+
+[[package]]
+name = "metermaid-capture"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "ringbuf",
+ "serde",
 ]
 
 [[package]]

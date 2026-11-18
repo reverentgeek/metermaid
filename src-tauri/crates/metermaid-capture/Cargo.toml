@@ -1,0 +1,18 @@
+[package]
+name = "metermaid-capture"
+version = "0.1.0"
+description = "Audio input device discovery and PCM capture for MeterMaid and sibling tools"
+authors = ["David Neal <david@reverentgeek.com>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/reverentgeek/metermaid"
+
+[features]
+asio = ["cpal/asio"]
+serde = ["dep:serde"]
+
+[dependencies]
+# cpal 0.18.2 keeps windows and windows-core on compatible versions.
+cpal = "0.18.2"
+ringbuf = "0.6"
+serde = { version = "1", features = ["derive"], optional = true }

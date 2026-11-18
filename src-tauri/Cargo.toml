@@ -36,14 +36,8 @@ tauri-plugin-process = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# 0.18.2 is a floor, not a preference: it is the release that declares `windows`
-# and `windows-core` as a matched 0.62 pair. 0.18.1 declared each independently
-# as ">=0.61, <=0.62", which let them resolve to different lines and broke the
-# WASAPI backend's `implement` macro — the reason this crate used to carry a
-# `windows-core = "0.61"` pin. Don't relax this below 0.18.2.
-cpal = "0.18.2"
+metermaid-capture = { path = "crates/metermaid-capture", features = ["serde"] }
 metermaid-dsp = { path = "crates/metermaid-dsp", features = ["serde"] }
-ringbuf = "0.6"
 
 # The self-updater is desktop-only (no mobile target).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -76,7 +70,7 @@ block2 = "0.6"
 # (WASAPI shared mode reports only the endpoint default, often mono). There is
 # no ARM64 ASIO SDK, so this feature is scoped to x86_64. Building it requires
 # libclang (bindgen) + the MSVC C++ toolchain and `CPAL_ASIO_DIR` pointing at
-# the Steinberg ASIO SDK. Cargo unifies this with the base `cpal` dependency.
+# the Steinberg ASIO SDK. Cargo unifies this with the base capture dependency.
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
-cpal = { version = "0.18.2", features = ["asio"] }
+metermaid-capture = { path = "crates/metermaid-capture", features = ["asio"] }
 
