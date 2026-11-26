@@ -22,13 +22,13 @@
 	"author": "David Neal <david@reverentgeek.com> (https://reverentgeek.com/)",
 	"license": "MIT",
 	"type": "module",
-	"packageManager": "pnpm@12.16.1+sha512.091d1dee7927575661b25dab3c2ae31cafc1c54d6b71ed6a6600cf0c1cb10434a447eae14015f1b23e2e6bedeed79df94a932e2164d2832280dce3fb32f656d1",
+	"packageManager": "pnpm@12.24.0+sha512.5f90f50a48aa40f01dc43bd3acb528922fd899d3b909015fdb23af73bb31c578f29ceb29be9a4d6f0146adb34206aac332796043cc5024b815ef76288cbac767",
 	"devDependencies": {
-		"@11ty/eleventy": "^3.1.7",
-		"@playwright/test": "^1.64.1",
-		"@tailwindcss/cli": "^4.3.3",
-		"eleventy-plugin-edgejs": "^1.1.30",
+		"@11ty/eleventy": "^3.1.8",
+		"@playwright/test": "^1.65.1",
+		"@tailwindcss/cli": "^4.3.5",
+		"eleventy-plugin-edgejs": "^1.1.34",
 		"markdown-it": "^15.0.3",
-		"tailwindcss": "^4.3.3"
+		"tailwindcss": "^4.3.5"
 	}
 }

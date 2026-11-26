@@ -1,0 +1,22 @@
+[package]
+name = "metermaid-capture"
+version = "0.1.0"
+description = "Audio input device discovery and PCM capture for MeterMaid and sibling tools"
+authors = ["David Neal <david@reverentgeek.com>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/reverentgeek/metermaid"
+
+[features]
+asio = ["cpal/asio"]
+serde = ["dep:serde"]
+
+[dependencies]
+# 0.18.2 is a floor, not a preference: it is the release that declares `windows`
+# and `windows-core` as a matched 0.62 pair. 0.18.1 declared each independently
+# as ">=0.61, <=0.62", which let them resolve to different lines and broke the
+# WASAPI backend's `implement` macro — the reason MeterMaid used to carry a
+# `windows-core = "0.61"` pin. Don't relax this below 0.18.2.
+cpal = "0.18.2"
+ringbuf = "0.6"
+serde = { version = "1", features = ["derive"], optional = true }
