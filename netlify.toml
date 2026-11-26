@@ -1,7 +1,7 @@
 # Netlify build config for the MeterMaid website, which lives in site/.
 # `base` makes Netlify install + build from that subdirectory; `command` and
 # `publish` are both resolved RELATIVE TO `base`, so publish is "_site"
-# (Eleventy's output dir inside site/), not "site/_site" — Netlify would join
+# (ssqch's output dir inside site/), not "site/_site" — Netlify would join
 # that onto base and look for site/site/_site. App (src-tauri/) changes still
 # trigger a (fast, static) rebuild — kept simple on purpose so the
 # release-published deploy hook is never skipped by an ignore command.

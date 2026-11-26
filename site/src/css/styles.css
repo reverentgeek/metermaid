@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@source "../../_site";
+@source "..";
 
 @theme {
 	--font-display: "Space Grotesk", sans-serif;

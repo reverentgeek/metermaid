@@ -10,8 +10,10 @@ This `site/` directory lives **inside the metermaid app repo as a monorepo**. Th
 
 ## Build gotchas
 
-- **Templating is Edge.js** (via `eleventy-plugin-edgejs`), **not Nunjucks or Liquid**. `updates.edge` and the home-page teaser use `@each`/`@if`, and `{{{ item }}}` outputs pre-rendered (trusted) bullet HTML unescaped.
-- **Tailwind v4 runs as the standalone CLI**, not the PostCSS plugin, and scans the built output via `@source "../../_site"` — so **build 11ty before CSS**. The `build` script already orders them; don't run `build:css` against a stale `_site/`.
+- **The generator is [SiteSquatch](https://sitesquatch.dev/) (`ssqch`)**, configured in `ssqch.config.js` and pinned to an exact version in `package.json`. `ssqch docs <topic>` answers questions about it offline, for the installed version. The site moved from Eleventy with byte-identical output.
+- **Templating is Edge.js** (ssqch renders `.edge` with edge.js itself), **not Nunjucks or Liquid**. `updates.edge` and the home-page teaser use `@each`/`@if`, and `{{{ item }}}` outputs pre-rendered (trusted) bullet HTML unescaped. One difference from plain edge.js: an undefined value prints nothing, not `undefined`.
+- **Tailwind v4 runs as the standalone CLI**, not the PostCSS plugin, and scans the templates via `@source ".."` (i.e. `src/`) in `src/css/styles.css`. ssqch runs it: `pnpm run build` runs it once as a `beforeBuild` hook, and `pnpm run dev` (`ssqch serve`) keeps `tailwindcss --watch` running beside the server (`serve.run`). There's no separate CSS script; keep classes in the templates or data files under `src/` so Tailwind sees them.
+- **pnpm's release-age gate:** `ssqch` is in `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` so a same-day ssqch release can install.
 - **pnpm here is an isolated workspace** (`pnpm-workspace.yaml` keeps it from merging with the app's root workspace) — run `pnpm install` / `pnpm run …` from inside `site/`, never from the repo root.
 - `pnpm test` builds first, then runs Playwright against the built `_site/` (served by `scripts/serve-site.mjs` on :3001). One-time setup: `pnpm run test:install`.
 - **Hosting is Netlify, configured from the repo-root `../netlify.toml`** (`base = "site"`) — not from a config file in this directory. `../.github/workflows/site-deploy.yml` additionally pings a build hook on `release: published`, which **requires a `NETLIFY_BUILD_HOOK` repo secret** (create it in Netlify → Site configuration → Build & deploy → Build hooks).
@@ -53,7 +55,12 @@ Custom Tailwind v4 theme tokens in `src/css/styles.css` `@theme`, lifted from th
 
 - `{{ }}` escaped output, `{{{ }}}` raw/unescaped (used for `{{{ content }}}` in the layout).
 - Comments: `{{-- comment --}}`. Frontmatter is YAML between `---`.
-- Global data is available as `site.*` (from `_data/site.json`) and `release.*` (from `_data/release.js`); 11ty supplies `page.*`.
+- Global data is available as `site.*` (from `_data/site.json`) and `release.*` (from `_data/release.js`); ssqch supplies `page.*`.
+- Front matter keys are ssqch's: `layout`, `permalink`, `excludeFromCollections` (Eleventy's `eleventyExcludeFromCollections` works but prints a note).
+
+## Checking a generator change
+
+For any change that could alter the output (an ssqch upgrade, a config change), compare before and after: `ssqch baseline "pnpm run build" --commit <before>` builds the old version into `.cache/ssqch/baseline/` (gitignored), then `pnpm run build` and `ssqch diff --exact .cache/ssqch/baseline/ref-1 _site`. Set `GITHUB_TOKEN` (e.g. `GITHUB_TOKEN=$(gh auth token)`) so the repeated builds don't hit the API's unauthenticated rate limit and fall back to `FALLBACK_VERSION`.
 
 ## Conventions
 
