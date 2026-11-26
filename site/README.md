@@ -1,15 +1,15 @@
 # MeterMaid website
 
-The landing page for [MeterMaid](https://github.com/reverentgeek/metermaid) — a cross-platform desktop LUFS / loudness meter. Built with [Eleventy](https://www.11ty.dev/) + [Edge.js](https://edgejs.dev/) templates and [Tailwind CSS v4](https://tailwindcss.com/), deployed on Netlify. It lives in the metermaid app repo as a monorepo (this `site/` directory); all commands below run from here.
+The landing page for [MeterMaid](https://github.com/reverentgeek/metermaid) — a cross-platform desktop LUFS / loudness meter. Built with [SiteSquatch](https://sitesquatch.dev/) (`ssqch`) + [Edge.js](https://edgejs.dev/) templates and [Tailwind CSS v4](https://tailwindcss.com/), deployed on Netlify. It lives in the metermaid app repo as a monorepo (this `site/` directory); all commands below run from here.
 
 ## Develop
 
 ```sh
 pnpm install
-pnpm run dev        # 11ty serve + Tailwind watch
+pnpm run dev        # ssqch serve (runs the Tailwind watcher too)
 ```
 
-Open the URL Eleventy prints (default <http://localhost:8080>).
+Open the URL ssqch prints (default <http://localhost:8080>).
 
 ## Build & test
 

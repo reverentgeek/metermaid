@@ -3,3 +3,6 @@ _site/
 .playwright-mcp/
 test-results/
 playwright-report/
+
+# ssqch build cache (baseline reference builds, fetch cache)
+.cache/
